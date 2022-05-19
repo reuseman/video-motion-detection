@@ -6,6 +6,16 @@
 
 #define PROGRAM_VERSION "0.1"
 
+enum BlurAlgorithm {
+    H1,
+    H2,
+    H3,
+    H4,
+    BOX_BLUR,
+    BOX_BLUR_MOVING_WINDOW,
+    OPEN_CV
+}; 
+
 // Convulution kernels
 cv::Mat h1 = cv::Mat::ones(3, 3, CV_8U);
 cv::Mat h2 = (cv::Mat_<short>(3, 3) << 1, 1, 1, 1, 2, 1, 1, 1, 1);
@@ -181,20 +191,47 @@ void cv_box_blur_moving_window(cv::Mat& frame, int kernel_size)
     }
 }
 
-void cv_preprocess(cv::Mat& frame)
+void cv_preprocess(cv::Mat& frame, bool opencv_greyscale, BlurAlgorithm blur_algorithm)
 {
     // Apply greyscale
-    // cvtColor(frame, frame, COLOR_BGR2GRAY);
-    cv_grayscale(frame);
+    if (opencv_greyscale)
+        cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
+    else
+        cv_grayscale(frame);
 
-    // Apply a box blur (a.k.a. box linear filter)
-    cv_box_blur_moving_window(frame, 3);
+    // Apply blur
+    switch (blur_algorithm)
+    {
+        case H1:
+            cv_apply_kernel(frame, h1);
+            break;
+        case H2:
+            cv_apply_kernel(frame, h2);
+            break;
+        case H3:
+            cv_apply_kernel(frame, h3);
+            break;
+        case H4:
+            cv_apply_kernel(frame, h4);
+            break;
+        case BOX_BLUR:
+            cv_box_blur(frame, 3);
+            break;
+        case BOX_BLUR_MOVING_WINDOW:
+            cv_box_blur_moving_window(frame, 3);
+            break;
+        case OPEN_CV:
+            cv::blur(frame, frame, cv::Size(3, 3));
+            break;
+        default:
+            break;
+    }
 }
 
-bool frame_contains_motion(cv::Mat background_frame, cv::Mat& current_frame, float motion_detection_threshold)
+bool frame_contains_motion(cv::Mat background_frame, cv::Mat& current_frame, float motion_detection_threshold, bool opencv_greyscale, BlurAlgorithm blur_algorithm)
 {
     cv::Mat diff;
-    cv_preprocess(current_frame);
+    cv_preprocess(current_frame, opencv_greyscale, blur_algorithm);
     absdiff(background_frame, current_frame, diff);
     // threshold(diff, diff, motion_detection_threshold, 255, THRESH_BINARY);
 
@@ -215,7 +252,9 @@ int main(int argc, char const *argv[])
     parser.add_argument("-t", "--threshold").help("sets the threshold for motion detection").default_value(0.6).scan<'g', double>();
     parser.add_argument("-p", "--player").default_value(false).implicit_value(true).help("shows the video player (ESC to exit)");
     parser.add_argument("--verbose").default_value(false).implicit_value(true).help("verbose mode");
-
+    parser.add_argument("--opencv-greyscale").default_value(false).implicit_value(true).help("use opencv greyscale");
+    parser.add_argument("--blur-algorithm").default_value(std::string("BOX_BLUR_MOVING_WINDOW")).help("blur algorithms (H1, H2, H3, H4, BOX_BLUR, BOX_BLUR_MOVING_WINDOW, OPEN_CV)");
+    
     try 
     {
         parser.parse_args(argc, argv);
@@ -231,7 +270,27 @@ int main(int argc, char const *argv[])
     auto show_video = parser.get<bool>("player");
     auto verbose = parser.get<bool>("verbose");
     auto motion_detection_threshold = parser.get<double>("threshold");
-
+    auto opencv_greyscale = parser.get<bool>("opencv-greyscale");
+    auto blur_algorithm = [=]() -> BlurAlgorithm {
+        std::string algorithm = parser.get<std::string>("blur-algorithm");
+        if (algorithm == "H1")
+            return H1;
+        else if (algorithm == "H2")
+            return H2;
+        else if (algorithm == "H3")
+            return H3;
+        else if (algorithm == "H4")
+            return H4;
+        else if (algorithm == "BOX_BLUR")
+            return BOX_BLUR;
+        else if (algorithm == "BOX_BLUR_MOVING_WINDOW")
+            return BOX_BLUR_MOVING_WINDOW;
+        else if (algorithm == "OPEN_CV")
+            return OPEN_CV;
+        else
+            assert (false);
+    }();
+   
     // Create a VideoCapture object and open the input file
     cv::VideoCapture cap("../assets/video.mp4"); 
    
@@ -240,7 +299,6 @@ int main(int argc, char const *argv[])
         std::cout << "Error opening video stream or file" << std::endl;
         return -1;
     }
-
 
     cv::Mat background_frame;
     cv::Mat frame;
@@ -255,13 +313,13 @@ int main(int argc, char const *argv[])
     int frames_with_motion = 0;
     int current_frame = 0;
     int total_frames = cap.get(cv::CAP_PROP_FRAME_COUNT);
-    cv_preprocess(background_frame);
+    cv_preprocess(background_frame, opencv_greyscale, blur_algorithm);
 
     if (show_video)
     {
         while (current_frame < total_frames)
         {
-            if (frame_contains_motion(background_frame, frame, motion_detection_threshold)) {
+            if (frame_contains_motion(background_frame, frame, motion_detection_threshold, opencv_greyscale, blur_algorithm)) {
                 frames_with_motion++;
                 if (verbose)
                     std::cout << "Frame " << current_frame + 1 << "/" << total_frames << " has motion" <<  std::endl;
@@ -285,7 +343,7 @@ int main(int argc, char const *argv[])
     {
         while (current_frame < total_frames)
         {
-            if (frame_contains_motion(background_frame, frame, motion_detection_threshold)) {
+            if (frame_contains_motion(background_frame, frame, motion_detection_threshold, opencv_greyscale, blur_algorithm)) {
                 frames_with_motion++;
                 if (verbose)
                     std::cout << "Frame " << current_frame + 1<< "/" << total_frames << " has motion" <<  std::endl;
