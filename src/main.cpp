@@ -11,12 +11,11 @@
 int main(int argc, char const *argv[])
 {
     // Define program arguments
-    argparse::ArgumentParser parser("Motion video detect", PROGRAM_VERSION);
+    argparse::ArgumentParser parser("motion-detection", PROGRAM_VERSION);
     parser.add_description("Count the number of frames with motion w.r.t the first frame of the video.");
-    //      Positional arguments
-    parser.add_argument("input").help("path of the input video");
-    //      Optional arguments
-    parser.add_argument("-t", "--threshold").help("sets the threshold for motion detection").default_value(0.6).scan<'g', double>();
+
+    parser.add_argument("-i", "--input").required().help("path of the input video");
+    parser.add_argument("-t", "--threshold").help("threshold for the motion detection").default_value(0.6).scan<'g', double>();
     parser.add_argument("-w", "--workers").default_value(0).help("number of workers (0 for sequential)");
     parser.add_argument("-o", "--opencv-greyscale").default_value(false).implicit_value(true).help("use opencv greyscale");
     parser.add_argument("-b", "--blur-algorithm").default_value(std::string("BOX_BLUR_MOVING_WINDOW")).help("blur algorithms (H1, H2, H3, H4, BOX_BLUR, BOX_BLUR_MOVING_WINDOW, OPEN_CV)");
