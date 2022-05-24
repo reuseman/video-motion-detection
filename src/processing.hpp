@@ -1,3 +1,6 @@
+#pragma once
+#include <thread>
+#include <atomic>
 #include "opencv2/opencv.hpp"
 #include "shared_queue.hpp"
 
@@ -260,6 +263,7 @@ namespace video
 {
     int count_frames_with_motion_player(cv::VideoCapture cap, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm, float motion_detection_threshold, bool verbose)
     {
+        cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
         cv::Mat background_frame;
         cv::Mat frame;
         cap >> background_frame;
@@ -298,6 +302,7 @@ namespace video
 
     int count_frames_with_motion(cv::VideoCapture cap, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm, float motion_detection_threshold, bool verbose)
     {
+        cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
         cv::Mat background_frame;
         cv::Mat frame;
         cap >> background_frame;
@@ -324,12 +329,15 @@ namespace video
         return frames_with_motion;
     }
 
-    int count_frames_with_motion_par(cv::VideoCapture cap, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm, float motion_detection_threshold, int workers, bool verbose)
+    int count_frames_with_motion_par(cv::VideoCapture cap, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm, float motion_detection_threshold, bool verbose, int workers)
     {
+        cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
         helper::SharedQueue<cv::Mat> queue;
         std::vector<std::thread> threads;
         std::atomic<int> counter;
         cv::Mat background_frame, frame;
+
+        std::cout << "Starting " << workers << " threads" << std::endl;
 
         cap >> background_frame;
         frame = background_frame;
@@ -350,8 +358,6 @@ namespace video
                 frame = queue.pop();
                 if (frame.empty()) {
                     // EOS reached, update global counter and exit
-                    std::cout << "Thread " << std::this_thread::get_id() << ": empty frame" << std::endl;
-                    std::cout << "Processed " << todo_total_frames << std::endl;
                     counter += local_counter;
                     break;
                 }
@@ -380,11 +386,37 @@ namespace video
 
         // Wait for threads to finish
         for (std::thread &t : threads)
-        {
             t.join();
-            std::cout << "Thread joined " << std::endl;
-        }
 
         return counter;
+    }
+
+    int count_frames_with_motion_ff(cv::VideoCapture cap, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm, float motion_detection_threshold, bool verbose, int workers)
+    {
+        cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
+        cv::Mat background_frame;
+        cv::Mat frame;
+        cap >> background_frame;
+        frame = background_frame;
+
+        int frames_with_motion = 0;
+        int current_frame = 0;
+        int total_frames = cap.get(cv::CAP_PROP_FRAME_COUNT);
+        video::frame::preprocess(background_frame, opencv_greyscale, blur_algorithm);
+
+        while (!frame.empty())
+        {
+            if (video::frame::contains_motion(background_frame, frame, motion_detection_threshold, opencv_greyscale, blur_algorithm))
+            {
+                frames_with_motion++;
+                if (verbose)
+                    std::cout << "Frame " << current_frame + 1 << "/" << total_frames << " has motion" << std::endl;
+            }
+
+            cap >> frame;
+            current_frame++;
+        }
+
+        return frames_with_motion;
     }
 }

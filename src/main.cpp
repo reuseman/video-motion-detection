@@ -1,12 +1,22 @@
 #include <iostream>
-#include <vector>
 #include "opencv2/opencv.hpp"
-#include "utimer.hpp"
-#include "argparse.hpp"
 #include "processing.hpp"
-#include <atomic>
+#include "argparse.hpp"
+#include "benchmark.hpp"
+#include "utimer.hpp"
 
 #define PROGRAM_VERSION "0.1"
+
+cv::VideoCapture read_capture(const std::string &filename)
+{
+    cv::VideoCapture cap(filename);
+    if (!cap.isOpened())
+    {
+        std::cerr << "Could not open video file: " << filename << std::endl;
+        exit(1);
+    }
+    return cap;
+}
 
 int main(int argc, char const *argv[])
 {
@@ -14,12 +24,14 @@ int main(int argc, char const *argv[])
     argparse::ArgumentParser parser("motion-detection", PROGRAM_VERSION);
     parser.add_description("Count the number of frames with motion w.r.t the first frame of the video.");
 
-    parser.add_argument("-i", "--input").required().help("path of the input video");
+    parser.add_argument("-s", "--source-video").required().help("path of the source video");
     parser.add_argument("-t", "--threshold").help("threshold for the motion detection").default_value(0.6).scan<'g', double>();
     parser.add_argument("-w", "--workers").default_value(0).help("number of workers (0 for sequential)");
     parser.add_argument("-o", "--opencv-greyscale").default_value(false).implicit_value(true).help("use opencv greyscale");
-    parser.add_argument("-b", "--blur-algorithm").default_value(std::string("BOX_BLUR_MOVING_WINDOW")).help("blur algorithms (H1, H2, H3, H4, BOX_BLUR, BOX_BLUR_MOVING_WINDOW, OPEN_CV)");
-    parser.add_argument("-p", "--player").default_value(false).implicit_value(true).help("shows the video player (ESC to exit)");
+    parser.add_argument("-a", "--blur-algorithm").default_value(std::string("BOX_BLUR_MOVING_WINDOW")).help("blur algorithms (H1, H2, H3, H4, BOX_BLUR, BOX_BLUR_MOVING_WINDOW, OPEN_CV)");
+    parser.add_argument("-p", "--player").default_value(false).implicit_value(true).help("shows the video player with workers = 0 (ESC to exit)");
+    parser.add_argument("-b", "--benchmark").default_value(std::string("")).help("benchmark mode is enabled and appends the results with the specified name in results.csv");
+    parser.add_argument("-i", "--iterations").default_value(1).help("benchmark mode is executed with the specified number of iterations").scan<'i', int>();
     parser.add_argument("--verbose").default_value(false).implicit_value(true).help("verbose mode");
 
     // Parse arguments
@@ -35,7 +47,7 @@ int main(int argc, char const *argv[])
     }
 
     // Get arguments
-    auto input_path = parser.get<std::string>("input");
+    auto source_path = parser.get<std::string>("source-video");
     auto motion_detection_threshold = parser.get<double>("threshold");
     auto workers = parser.get<int>("workers");
     auto opencv_greyscale = parser.get<bool>("opencv-greyscale");
@@ -60,41 +72,50 @@ int main(int argc, char const *argv[])
             assert(false);
     }();
     auto show_video = parser.get<bool>("player");
+    auto benchmark_name = parser.get<std::string>("benchmark");
+    auto benchmark_iterations = parser.get<int>("iterations");
     auto verbose = parser.get<bool>("verbose");
 
-    // Create a VideoCapture object and open the input file
-    cv::VideoCapture cap("./assets/video2.mov");
-    if (!cap.isOpened())
-    {
-        std::cout << "Error opening video stream or file" << std::endl;
-        return -1;
-    }
+    // TODO remove this hardcoded path
+    source_path = "./assets/door.mov";
+    auto cap = read_capture(source_path);
 
     // Detect motion
     int frames_with_motion = 0;
-    int total_frames = cap.get(cv::CAP_PROP_FRAME_COUNT);
-
-    helper::utimer u("Video motion detect");
-    if (workers == 0)
+    if (!benchmark_name.empty() && benchmark_iterations >= 1)
     {
-        if (show_video)
+        std::cout << "Benchmark mode enabled" << std::endl;
+        std::cout << "Iterations: " << benchmark_iterations << std::endl;
+        std::cout << "Results will be appended to results.csv" << std::endl;
+        for (int it = 1; it <= benchmark_iterations; it++)
         {
-            frames_with_motion = video::count_frames_with_motion_player(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose);
-        }
-        else
-        {
-            frames_with_motion = video::count_frames_with_motion(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose);
+            std::cout << "\nStarting benchmark " << it << " for " << benchmark_name << std::endl;
+            helper::benchmark(benchmark_name, it, video::count_frames_with_motion, video::count_frames_with_motion_par, cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose);
         }
     }
     else
     {
-        frames_with_motion = video::count_frames_with_motion_par(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, workers, verbose);
+        if (workers == 0)
+        {
+            if (show_video)
+            {
+                frames_with_motion = video::count_frames_with_motion_player(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose);
+            }
+            else
+            {
+                frames_with_motion = video::count_frames_with_motion(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose);
+            }
+        }
+        else
+        {
+            frames_with_motion = video::count_frames_with_motion_par(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, workers, verbose);
+        }
     }
 
+    // Print the results
+    int total_frames = cap.get(cv::CAP_PROP_FRAME_COUNT);
     float percentage = (float)frames_with_motion / (float)total_frames * 100.0f;
     std::cout << "The number of frames with motion are " << frames_with_motion << "/" << total_frames << " (" << percentage << "%)" << std::endl;
-
-    // Release the VideoCapture object
     cap.release();
     return 0;
 }

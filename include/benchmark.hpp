@@ -1,3 +1,4 @@
+#pragma once
 #include <iostream>
 #include <fstream>
 #include <thread>
@@ -8,7 +9,7 @@
 
 using namespace std;
 
-namespace utils
+namespace helper
 {
   template <class TimeT = std::chrono::microseconds,
             class ClockT = std::chrono::steady_clock>
@@ -42,7 +43,7 @@ namespace utils
     ofstream ofstrm("results.csv", mode);
     if (mode == std::ios_base::out)
     {
-      ofstrm << "trial name,id,type,cores,completion time,bandwidth,speedup,scalability,efficiency" << endl;
+      ofstrm << "trial_ame,id,type,threads,completion_time,bandwidth,speedup,scalability,efficiency" << endl;
     }
 
     // BENCHMARK

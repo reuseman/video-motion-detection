@@ -1,4 +1,8 @@
 .vscode
+.venv
+.ipynb_checkpoints
 build/
 assets/
 doc/
+results.csv
+include/ff
