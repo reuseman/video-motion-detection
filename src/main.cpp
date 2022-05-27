@@ -1,5 +1,4 @@
 #include <iostream>
-// #include <ff/ff.hpp>
 #include <functional>
 
 #include "opencv2/opencv.hpp"
@@ -11,20 +10,6 @@
 
 #define PROGRAM_VERSION "0.1"
 
-typedef unsigned long ulong;
-
-using namespace std::literals::chrono_literals;
-
-const auto ta = 100ms;
-const auto tf = 100ms;
-const auto m = 100;
-
-typedef struct
-{
-    int taskno;
-    float x;
-} myTask;
-
 cv::VideoCapture read_capture(const std::string &filename)
 {
     cv::VideoCapture cap(filename);
@@ -35,99 +20,6 @@ cv::VideoCapture read_capture(const std::string &filename)
     }
     return cap;
 }
-
-// struct source : ff::ff_node_t<cv::VideoCapture, cv::Mat>
-// {
-//     source(const cv::VideoCapture cap) : cap(cap) {}
-
-//     cv::Mat *svc(cv::VideoCapture *)
-//     {
-//         while (true)
-//         {
-//             cv::Mat *frame = new cv::Mat();
-//             cap >> *frame; // maybe clone it
-//             if (frame->empty())
-//             {
-//                 delete frame;
-//                 return (EOS);
-//             }
-//             std::this_thread::sleep_for(ta);
-//             ff_send_out(frame);
-//         }
-//     }
-
-//     cv::VideoCapture cap;
-// };
-
-// struct funstageF : ff::ff_node_t<cv::Mat, bool>
-// {
-//     funstageF(cv::Mat background, float motion_detection_threshold, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm) : background(background), motion_detection_threshold(motion_detection_threshold), opencv_greyscale(opencv_greyscale), blur_algorithm(blur_algorithm) {}
-
-//     bool *svc(cv::Mat *frame)
-//     {
-//         bool *motion = new bool(video::frame::contains_motion(background, *frame, motion_detection_threshold, opencv_greyscale, blur_algorithm));
-//         delete frame;
-//         return motion;
-//     }
-
-//     const cv::Mat background;
-//     const float motion_detection_threshold;
-//     const bool opencv_greyscale;
-//     const video::frame::BlurAlgorithm blur_algorithm;
-// };
-
-// struct sink : ff::ff_node_t<bool>
-// {
-//     bool *svc(bool *motion)
-//     {
-//         if (*motion) {
-//             std::cout << "Motion detected!" << std::endl;
-//             counter++;
-//         } else {
-//             std::cout << "No motion detected." << std::endl;
-//         }
-//         delete motion;
-//         return (GO_ON);
-//     }
-
-//     void svc_end()
-//     {
-//         std::cout << "Sink got EOS, total sum = " << counter << std::endl;
-//     }
-
-//     long counter = 0;
-// };
-
-// ulong count_frames_ff(cv::VideoCapture cap, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm, float motion_detection_threshold, bool verbose, int workers)
-// {
-//     cv::Mat background;
-//     cap >> background;
-//     video::frame::preprocess(background, opencv_greyscale, blur_algorithm);
-
-//     std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
-//     for (int i = 0; i < workers; i++)
-//     {
-//         workers_nodes.push_back(std::make_unique<funstageF>(background, motion_detection_threshold, opencv_greyscale, blur_algorithm));
-//     }
-//     std::cout << "Workers created" << workers_nodes.size() << std::endl;
-//     ff::ff_Farm<myTask> farm(std::move(workers_nodes));
-
-//     source emitter(cap);
-//     sink collector;
-
-//     farm.add_emitter(emitter);
-//     farm.add_collector(collector);
-
-//     ff::ffTime(ff::START_TIME);
-//     if (farm.run_and_wait_end() < 0)
-//     {
-//         ff::error("Error running farm");
-//         return -1;
-//     }
-//     ff::ffTime(ff::STOP_TIME);
-//     std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
-//     return 42L;
-// }
 
 int main(int argc, char const *argv[])
 {
@@ -217,7 +109,10 @@ int main(int argc, char const *argv[])
             }
             else
             {
-                frames_with_motion = motion_detector.count_frames();
+                {
+                    helper::utimer timer("Counting frames sequential");
+                    frames_with_motion = motion_detector.count_frames();
+                }
             }
         }
         else
@@ -225,12 +120,18 @@ int main(int argc, char const *argv[])
             if (parallel_mode == 0)
             {
                 std::cout << "Parallel mode: threads" << std::endl;
-                frames_with_motion = motion_detector.count_frames_threads(workers);
+                {
+                    helper::utimer timer("Counting frames threads");
+                    frames_with_motion = motion_detector.count_frames_threads(workers);
+                }
             }
             else
             {
                 std::cout << "Parallel mode: fast flow" << std::endl;
-                // frames_with_motion = count_frames_ff(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose, workers);
+                {
+                    helper::utimer timer("Counting frames fast flow");
+                    frames_with_motion = motion_detector.count_frames_ff(workers);
+                }
             }
         }
     }
