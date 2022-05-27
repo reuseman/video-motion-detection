@@ -1,11 +1,14 @@
+#pragma once
 #include <iostream>
-#include <ff/ff.hpp>
+// #include <ff/ff.hpp>
+#include <functional>
 
 #include "opencv2/opencv.hpp"
-#include "processing.hpp"
+#include "frame_processing.hpp"
 #include "argparse.hpp"
 #include "benchmark.hpp"
 #include "utimer.hpp"
+#include "motion_detector.hpp"
 
 #define PROGRAM_VERSION "0.1"
 
@@ -34,98 +37,98 @@ cv::VideoCapture read_capture(const std::string &filename)
     return cap;
 }
 
-struct source : ff::ff_node_t<cv::VideoCapture, cv::Mat>
-{
-    source(const cv::VideoCapture cap) : cap(cap) {}
+// struct source : ff::ff_node_t<cv::VideoCapture, cv::Mat>
+// {
+//     source(const cv::VideoCapture cap) : cap(cap) {}
 
-    cv::Mat *svc(cv::VideoCapture *)
-    {
-        while (true)
-        {
-            cv::Mat *frame = new cv::Mat();
-            cap >> *frame; // maybe clone it
-            if (frame->empty())
-            {
-                delete frame;
-                return (EOS);
-            }
-            std::this_thread::sleep_for(ta);
-            ff_send_out(frame);
-        }
-    }
+//     cv::Mat *svc(cv::VideoCapture *)
+//     {
+//         while (true)
+//         {
+//             cv::Mat *frame = new cv::Mat();
+//             cap >> *frame; // maybe clone it
+//             if (frame->empty())
+//             {
+//                 delete frame;
+//                 return (EOS);
+//             }
+//             std::this_thread::sleep_for(ta);
+//             ff_send_out(frame);
+//         }
+//     }
 
-    cv::VideoCapture cap;
-};
+//     cv::VideoCapture cap;
+// };
 
-struct funstageF : ff::ff_node_t<cv::Mat, bool>
-{
-    funstageF(cv::Mat background, float motion_detection_threshold, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm) : background(background), motion_detection_threshold(motion_detection_threshold), opencv_greyscale(opencv_greyscale), blur_algorithm(blur_algorithm) {}
-   
-    bool *svc(cv::Mat *frame)
-    {
-        bool *motion = new bool(video::frame::contains_motion(background, *frame, motion_detection_threshold, opencv_greyscale, blur_algorithm));
-        delete frame;
-        return motion;
-    }
+// struct funstageF : ff::ff_node_t<cv::Mat, bool>
+// {
+//     funstageF(cv::Mat background, float motion_detection_threshold, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm) : background(background), motion_detection_threshold(motion_detection_threshold), opencv_greyscale(opencv_greyscale), blur_algorithm(blur_algorithm) {}
 
-    const cv::Mat background;
-    const float motion_detection_threshold;
-    const bool opencv_greyscale;
-    const video::frame::BlurAlgorithm blur_algorithm;
-};
+//     bool *svc(cv::Mat *frame)
+//     {
+//         bool *motion = new bool(video::frame::contains_motion(background, *frame, motion_detection_threshold, opencv_greyscale, blur_algorithm));
+//         delete frame;
+//         return motion;
+//     }
 
-struct sink : ff::ff_node_t<bool>
-{
-    bool *svc(bool *motion)
-    {
-        if (*motion) {
-            std::cout << "Motion detected!" << std::endl;
-            counter++;
-        } else {
-            std::cout << "No motion detected." << std::endl;
-        }
-        delete motion;
-        return (GO_ON);
-    }
+//     const cv::Mat background;
+//     const float motion_detection_threshold;
+//     const bool opencv_greyscale;
+//     const video::frame::BlurAlgorithm blur_algorithm;
+// };
 
-    void svc_end()
-    {
-        std::cout << "Sink got EOS, total sum = " << counter << std::endl;
-    }
+// struct sink : ff::ff_node_t<bool>
+// {
+//     bool *svc(bool *motion)
+//     {
+//         if (*motion) {
+//             std::cout << "Motion detected!" << std::endl;
+//             counter++;
+//         } else {
+//             std::cout << "No motion detected." << std::endl;
+//         }
+//         delete motion;
+//         return (GO_ON);
+//     }
 
-    long counter = 0;
-};
+//     void svc_end()
+//     {
+//         std::cout << "Sink got EOS, total sum = " << counter << std::endl;
+//     }
 
-ulong count_frames_with_motion_ff(cv::VideoCapture cap, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm, float motion_detection_threshold, bool verbose, int workers)
-{
-    cv::Mat background;
-    cap >> background;
-    video::frame::preprocess(background, opencv_greyscale, blur_algorithm);
+//     long counter = 0;
+// };
 
-    std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
-    for (int i = 0; i < workers; i++)
-    {
-        workers_nodes.push_back(std::make_unique<funstageF>(background, motion_detection_threshold, opencv_greyscale, blur_algorithm));
-    }
-    std::cout << "Workers created" << workers_nodes.size() << std::endl;
-    ff::ff_Farm<myTask> farm(std::move(workers_nodes));
+// ulong count_frames_ff(cv::VideoCapture cap, bool opencv_greyscale, video::frame::BlurAlgorithm blur_algorithm, float motion_detection_threshold, bool verbose, int workers)
+// {
+//     cv::Mat background;
+//     cap >> background;
+//     video::frame::preprocess(background, opencv_greyscale, blur_algorithm);
 
-    source emitter(cap);
-    sink collector;
+//     std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
+//     for (int i = 0; i < workers; i++)
+//     {
+//         workers_nodes.push_back(std::make_unique<funstageF>(background, motion_detection_threshold, opencv_greyscale, blur_algorithm));
+//     }
+//     std::cout << "Workers created" << workers_nodes.size() << std::endl;
+//     ff::ff_Farm<myTask> farm(std::move(workers_nodes));
 
-    farm.add_emitter(emitter);
-    farm.add_collector(collector);
+//     source emitter(cap);
+//     sink collector;
 
-    ff::ffTime(ff::START_TIME);
-    if (farm.run_and_wait_end() < 0)
-    {
-        ff::error("Error running farm");
-        return -1;
-    }
-    ff::ffTime(ff::STOP_TIME);
-    std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
-    return 42L;
-}
+//     farm.add_emitter(emitter);
+//     farm.add_collector(collector);
+
+//     ff::ffTime(ff::START_TIME);
+//     if (farm.run_and_wait_end() < 0)
+//     {
+//         ff::error("Error running farm");
+//         return -1;
+//     }
+//     ff::ffTime(ff::STOP_TIME);
+//     std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
+//     return 42L;
+// }
 
 int main(int argc, char const *argv[])
 {
@@ -180,7 +183,7 @@ int main(int argc, char const *argv[])
         else if (algorithm == "OPEN_CV")
             return video::frame::OPEN_CV;
         else
-            assert(false);
+            throw std::runtime_error("Unknown blur algorithm");
     }();
     auto show_video = parser.get<bool>("player");
     auto benchmark_name = parser.get<std::string>("benchmark");
@@ -189,7 +192,9 @@ int main(int argc, char const *argv[])
 
     // Detect motion
     auto cap = read_capture(source_path);
-    int frames_with_motion = 0;
+    unsigned long frames_with_motion = 0;
+    video::MotionDetector motion_detector(cap, motion_detection_threshold, opencv_greyscale, blur_algorithm, verbose);
+
     if (!benchmark_name.empty() && benchmark_iterations >= 1)
     {
         std::cout << "Benchmark mode enabled" << std::endl;
@@ -198,7 +203,11 @@ int main(int argc, char const *argv[])
         for (int it = 1; it <= benchmark_iterations; it++)
         {
             std::cout << "\nStarting benchmark " << it << " for " << benchmark_name << std::endl;
-            helper::benchmark(benchmark_name, it, video::count_frames_with_motion, video::count_frames_with_motion_par, cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose);
+            auto count_frames = [&]() -> unsigned long
+            { return motion_detector.count_frames(); };
+            auto count_frames_without_motion_threads = [&](int workers) -> unsigned long
+            { return motion_detector.count_frames_threads(workers); };
+            helper::benchmark(benchmark_name, it, count_frames, count_frames_without_motion_threads);
         }
     }
     else
@@ -207,11 +216,11 @@ int main(int argc, char const *argv[])
         {
             if (show_video)
             {
-                frames_with_motion = video::count_frames_with_motion_player(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose);
+                frames_with_motion = motion_detector.count_frames_player();
             }
             else
             {
-                frames_with_motion = video::count_frames_with_motion(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose);
+                frames_with_motion = motion_detector.count_frames();
             }
         }
         else
@@ -219,12 +228,12 @@ int main(int argc, char const *argv[])
             if (parallel_mode == 0)
             {
                 std::cout << "Parallel mode: threads" << std::endl;
-                frames_with_motion = video::count_frames_with_motion_par(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose, workers);
+                frames_with_motion = motion_detector.count_frames_threads(workers);
             }
             else
             {
                 std::cout << "Parallel mode: fast flow" << std::endl;
-                frames_with_motion = count_frames_with_motion_ff(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose, workers);
+                // frames_with_motion = count_frames_ff(cap, opencv_greyscale, blur_algorithm, motion_detection_threshold, verbose, workers);
             }
         }
     }
