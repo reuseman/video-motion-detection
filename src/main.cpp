@@ -1,4 +1,3 @@
-#pragma once
 #include <iostream>
 // #include <ff/ff.hpp>
 #include <functional>
@@ -145,7 +144,6 @@ int main(int argc, char const *argv[])
     parser.add_argument("-p", "--player").default_value(false).implicit_value(true).help("shows the video player with workers = 0 (ESC to exit)");
     parser.add_argument("-b", "--benchmark").default_value(std::string("")).help("benchmark mode is enabled and appends the results with the specified name in results.csv");
     parser.add_argument("-i", "--iterations").default_value(1).help("benchmark mode is executed with the specified number of iterations").scan<'i', int>();
-    parser.add_argument("--verbose").default_value(false).implicit_value(true).help("verbose mode");
 
     // Parse arguments
     try
@@ -188,12 +186,11 @@ int main(int argc, char const *argv[])
     auto show_video = parser.get<bool>("player");
     auto benchmark_name = parser.get<std::string>("benchmark");
     auto benchmark_iterations = parser.get<int>("iterations");
-    auto verbose = parser.get<bool>("verbose");
 
     // Detect motion
     auto cap = read_capture(source_path);
     unsigned long frames_with_motion = 0;
-    video::MotionDetector motion_detector(cap, motion_detection_threshold, opencv_greyscale, blur_algorithm, verbose);
+    video::MotionDetector motion_detector(cap, motion_detection_threshold, opencv_greyscale, blur_algorithm);
 
     if (!benchmark_name.empty() && benchmark_iterations >= 1)
     {

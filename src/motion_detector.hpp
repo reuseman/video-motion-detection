@@ -16,10 +16,9 @@ namespace video
         bool opencv_greyscale;
         video::frame::BlurAlgorithm blur_algorithm;
         helper::SharedQueue<cv::Mat> queue;
-        bool verbose;
 
     public:
-        MotionDetector(cv::VideoCapture cap, const float threshold, const bool opencv_greyscale, const video::frame::BlurAlgorithm blur_algorithm, const bool verbose) : cap(cap), threshold(threshold), opencv_greyscale(opencv_greyscale), blur_algorithm(blur_algorithm), verbose(verbose) {}
+        MotionDetector(cv::VideoCapture cap, const float threshold, const bool opencv_greyscale, const video::frame::BlurAlgorithm blur_algorithm) : cap(cap), threshold(threshold), opencv_greyscale(opencv_greyscale), blur_algorithm(blur_algorithm) {}
         ulong count_frames();
         ulong count_frames_player();
         ulong count_frames_threads(int workers);
