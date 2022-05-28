@@ -32,10 +32,10 @@ int main(int argc, char const *argv[])
     parser.add_argument("-w", "--workers").default_value(0).help("number of workers (0 for sequential)").scan<'i', int>();
     parser.add_argument("-m", "--parallel-mode").default_value(0).help("parallel mode (0: threads, 1: fast flow)").scan<'i', int>();
     parser.add_argument("-o", "--opencv-greyscale").default_value(false).implicit_value(true).help("use opencv greyscale");
-    parser.add_argument("-a", "--blur-algorithm").default_value(std::string("BOX_BLUR_MOVING_WINDOW")).help("blur algorithms (H1, H2, H3, H4, BOX_BLUR, BOX_BLUR_MOVING_WINDOW, OPEN_CV)");
+    parser.add_argument("-a", "--blur-algorithm").default_value(std::string("BOX_BLUR")).help("blur algorithms (H1, H2, H3, H4, BOX_BLUR, BOX_BLUR_MOVING_WINDOW, OPEN_CV)");
     parser.add_argument("-p", "--player").default_value(false).implicit_value(true).help("shows the video player with workers = 0 (ESC to exit)");
     parser.add_argument("-b", "--benchmark").default_value(std::string("")).help("benchmark mode is enabled and appends the results with the specified name in results.csv");
-    parser.add_argument("-i", "--iterations").default_value(1).help("benchmark mode is executed with the specified number of iterations").scan<'i', int>();
+    parser.add_argument("-i", "--iterations").default_value(5).help("benchmark mode is executed with the specified number of iterations").scan<'i', int>();
 
     // Parse arguments
     try
@@ -86,6 +86,7 @@ int main(int argc, char const *argv[])
 
     if (!benchmark_name.empty() && benchmark_iterations >= 1)
     {
+        unsigned long total_frames = cap.get(cv::CAP_PROP_FRAME_COUNT);
         std::cout << "Benchmark mode enabled" << std::endl;
         std::cout << "Iterations: " << benchmark_iterations << std::endl;
         std::cout << "Results will be appended to results.csv" << std::endl;
@@ -94,9 +95,11 @@ int main(int argc, char const *argv[])
             std::cout << "\nStarting benchmark " << it << " for " << benchmark_name << std::endl;
             auto count_frames = [&]() -> unsigned long
             { return motion_detector.count_frames(); };
-            auto count_frames_without_motion_threads = [&](int workers) -> unsigned long
+            auto count_frames_threads = [&](int workers) -> unsigned long
             { return motion_detector.count_frames_threads(workers); };
-            helper::benchmark(benchmark_name, it, count_frames, count_frames_without_motion_threads);
+            auto count_frames_ff = [&](int workers) -> unsigned long
+            { return motion_detector.count_frames_ff(workers); };
+            helper::benchmark(benchmark_name, it, count_frames, std::vector<std::function<unsigned long(int)>>{count_frames_threads, count_frames_ff}, std::vector<std::string>{"threads", "ff"}, total_frames);
         }
     }
     else

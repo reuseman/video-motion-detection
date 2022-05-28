@@ -62,15 +62,15 @@ namespace helper
     {
       // Test parallel function with i cores
       cout << "Parallel translation with " << i << " threads" << endl;
-      auto ms = measure<>::duration(g, args..., i).count();
-      cout << "Par time with " << i << " cores: " << ms << " us" << endl;
-      ofstrm << trial_name << "," << id << ",par, " << i << "," << ms << "," << (double)1 / ms << "," << (double)seq_time / ms << "," << (double)par_time_1 / ms << "," << (double)(seq_time / i) / ms << endl;
+      auto us = measure<>::duration(g, args..., i).count();
+      cout << "Par time with " << i << " cores: " << us << " us" << endl;
+      ofstrm << trial_name << "," << id << ",par, " << i << "," << us << "," << (double)1 / us << "," << (double)seq_time / us << "," << (double)par_time_1 / us << "," << (double)(seq_time / i) / us << endl;
     }
     ofstrm.close();
   }
 
   template <class F, class G, class... Args>
-  void benchmark(string trial_name, int id, F &&f, std::vector<G> &&g, std::vector<std::string> names, Args &&...args)
+  void benchmark(string trial_name, int id, F &&f, std::vector<G> &&g, std::vector<std::string> names, unsigned long items, Args &&...args)
   {
     // Check if file exists
     std::ios_base::openmode mode;
@@ -88,7 +88,7 @@ namespace helper
     ofstream ofstrm("results.csv", mode);
     if (mode == std::ios_base::out)
     {
-      ofstrm << "trial name,id,type,cores,completion time,bandwidth,speedup,scalability,efficiency" << endl;
+      ofstrm << "trial name,items,id,type,threads,completion time,service time,bandwidth,speedup,scalability,efficiency" << endl;
     }
 
     // BENCHMARK
@@ -100,7 +100,7 @@ namespace helper
 
     // Write results to file
     ofstrm << std::fixed << setprecision(2) << endl;
-    ofstrm << trial_name << "," << id << ",seq, 1," << seq_time << "," << 1 << "," << 1 << "," << 1 << "," << 1 << endl;
+    ofstrm << trial_name << ","  << items << "," << id << ",seq, 1," << seq_time << "," << 1 << "," << 1 << "," << 1 << "," << 1 << "," << 1 << endl;
 
     for (int i = 0; i < g.size(); i++)
     {
@@ -108,13 +108,26 @@ namespace helper
       std::string name = names[i];
       auto par_time_1 = measure<>::duration(g_i, args..., 1).count();
       cout << "Parallel benchmark of " << name << endl;
-      // Test parallel function with j cores
-      for (int j = 1; j <= processor_count; j = 2 * j)
+
+      std::vector<int> workers = {1};
+      for (int j = 2; j <= processor_count; j = 2 + j)
       {
-        // cout << "Parallel translation with " << j << " threads" << endl;
-        auto ms = measure<>::duration(g_i, args..., j).count();
-        // cout << "Par time with " << j << " cores: " << ms << " us" << endl;
-        ofstrm << trial_name << "," << id << "," << name << "," << j << "," << ms << "," << (double)1 / ms << "," << (double)seq_time / ms << "," << (double)par_time_1 / ms << "," << (double)(seq_time / j) / ms << endl;
+        workers.push_back(j);
+      }
+
+      // Test parallel function with j cores
+      // for (int j = 1; j <= processor_count; j = 2 * j)
+      for (auto j : workers)     
+      {
+        auto us = measure<>::duration(g_i, args..., j).count();
+        cout << "Par time with " << j << " cores: " << us << " us" << endl;
+        auto completion_time = us;
+        auto service_time = us/items;
+        auto bandwith = (double)1 / service_time;
+        auto speedup = (double)seq_time / completion_time;
+        auto scalability = (double)par_time_1 / completion_time;
+        auto efficiency = (double)(seq_time / j) / completion_time;
+        ofstrm << trial_name << ","  << items << "," << id << "," << name << "," << j << "," << completion_time << "," << service_time << "," << bandwith << "," << speedup << "," << scalability << "," << efficiency << endl;
       }
     }
     ofstrm.close();
