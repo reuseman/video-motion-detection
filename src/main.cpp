@@ -6,7 +6,9 @@
 #include "argparse.hpp"
 #include "benchmark.hpp"
 #include "utimer.hpp"
-#include "motion_detector.hpp"
+#include "motion_detector.h"
+#include "motion_detector_stream.hpp"
+#include "motion_detector_buffer.hpp"
 
 #define PROGRAM_VERSION "0.1"
 
@@ -31,11 +33,10 @@ int main(int argc, char const *argv[])
     parser.add_argument("-t", "--threshold").help("threshold for the motion detection").default_value(0.6).scan<'g', double>();
     parser.add_argument("-w", "--workers").default_value(0).help("number of workers (0 for sequential)").scan<'i', int>();
     parser.add_argument("-m", "--parallel-mode").default_value(0).help("parallel mode (0: threads, 1: fast flow)").scan<'i', int>();
-    parser.add_argument("-o", "--opencv-greyscale").default_value(false).implicit_value(true).help("use opencv greyscale");
-    parser.add_argument("-a", "--blur-algorithm").default_value(std::string("BOX_BLUR")).help("blur algorithms (H1, H2, H3, H4, BOX_BLUR, BOX_BLUR_MOVING_WINDOW, OPEN_CV)");
-    parser.add_argument("-p", "--player").default_value(false).implicit_value(true).help("shows the video player with workers = 0 (ESC to exit)");
+    parser.add_argument("-pl", "--player").default_value(false).implicit_value(true).help("shows the video player with workers = 0 (ESC to exit)");
     parser.add_argument("-b", "--benchmark").default_value(std::string("")).help("benchmark mode is enabled and appends the results with the specified name in results.csv");
     parser.add_argument("-i", "--iterations").default_value(5).help("benchmark mode is executed with the specified number of iterations").scan<'i', int>();
+    parser.add_argument("-p", "--prefetch").default_value(false).implicit_value(true).help("prefetch the frames by loading the entire video");
 
     // Parse arguments
     try
@@ -50,39 +51,48 @@ int main(int argc, char const *argv[])
     }
 
     // Get arguments
-    auto source_path = parser.get<std::string>("source-video");
-    auto motion_detection_threshold = parser.get<double>("threshold");
-    auto workers = parser.get<int>("workers");
-    auto parallel_mode = parser.get<int>("parallel-mode");
-    auto opencv_greyscale = parser.get<bool>("opencv-greyscale");
-    auto blur_algorithm = [=]() -> video::frame::BlurAlgorithm
-    {
-        std::string algorithm = parser.get<std::string>("blur-algorithm");
-        if (algorithm == "H1")
-            return video::frame::H1;
-        else if (algorithm == "H2")
-            return video::frame::H2;
-        else if (algorithm == "H3")
-            return video::frame::H3;
-        else if (algorithm == "H4")
-            return video::frame::H4;
-        else if (algorithm == "BOX_BLUR")
-            return video::frame::BOX_BLUR;
-        else if (algorithm == "BOX_BLUR_MOVING_WINDOW")
-            return video::frame::BOX_BLUR_MOVING_WINDOW;
-        else if (algorithm == "OPEN_CV")
-            return video::frame::OPEN_CV;
-        else
-            throw std::runtime_error("Unknown blur algorithm");
-    }();
-    auto show_video = parser.get<bool>("player");
-    auto benchmark_name = parser.get<std::string>("benchmark");
-    auto benchmark_iterations = parser.get<int>("iterations");
+    const auto source_path = parser.get<std::string>("source-video");
+    const auto motion_detection_threshold = parser.get<double>("threshold");
+    const auto workers = parser.get<int>("workers");
+    const auto parallel_mode = parser.get<int>("parallel-mode");
+    const auto show_video = parser.get<bool>("player");
+    const auto benchmark_name = parser.get<std::string>("benchmark");
+    const auto benchmark_iterations = parser.get<int>("iterations");
+    const auto prefetch = parser.get<bool>("prefetch");
 
     // Detect motion
     auto cap = read_capture(source_path);
     unsigned long frames_with_motion = 0;
-    video::MotionDetector motion_detector(cap, motion_detection_threshold, opencv_greyscale, blur_algorithm);
+
+#if BLUR == 1
+    std::cout << "Blur algorithm: H1" << std::endl;
+#elif BLUR == 2
+    std::cout << "Blur algorithm: H2" << std::endl;
+#elif BLUR == 3
+    std::cout << "Blur algorithm: H3" << std::endl;
+#elif BLUR == 4
+    std::cout << "Blur algorithm: H4" << std::endl;
+#elif BLUR == 5
+    std::cout << "Blur algorithm: OPEN_CV" << std::endl;
+#else
+    std::cout << "Blur algorithm: Box blur" << std::endl;
+#endif
+
+#if OPENCV_GREYSCALE == 1
+    std::cout << "OpenCV greyscale algorithm: true" << std::endl;
+#else
+    std::cout << "OpenCV greyscale algorithm: false" << std::endl;
+#endif
+
+    video::IMotionDetector *motion_detector;
+    if (prefetch)
+    {
+        motion_detector = new video::MotionDetectorBuffer(cap, motion_detection_threshold);
+    }
+    else
+    {
+        motion_detector = new video::MotionDetectorStream(cap, motion_detection_threshold);
+    }
 
     if (!benchmark_name.empty() && benchmark_iterations >= 1)
     {
@@ -94,11 +104,11 @@ int main(int argc, char const *argv[])
         {
             std::cout << "\nStarting benchmark " << it << " for " << benchmark_name << std::endl;
             auto count_frames = [&]() -> unsigned long
-            { return motion_detector.count_frames(); };
+            { return motion_detector->count_frames(); };
             auto count_frames_threads = [&](int workers) -> unsigned long
-            { return motion_detector.count_frames_threads(workers); };
+            { return motion_detector->count_frames_threads(workers); };
             auto count_frames_ff = [&](int workers) -> unsigned long
-            { return motion_detector.count_frames_ff(workers); };
+            { return motion_detector->count_frames_ff(workers); };
             helper::benchmark(benchmark_name, it, count_frames, std::vector<std::function<unsigned long(int)>>{count_frames_threads, count_frames_ff}, std::vector<std::string>{"threads", "ff"}, total_frames);
         }
     }
@@ -108,13 +118,13 @@ int main(int argc, char const *argv[])
         {
             if (show_video)
             {
-                frames_with_motion = motion_detector.count_frames_player();
+                frames_with_motion = motion_detector->count_frames_player();
             }
             else
             {
                 {
                     helper::utimer timer("Counting frames sequential");
-                    frames_with_motion = motion_detector.count_frames();
+                    frames_with_motion = motion_detector->count_frames();
                 }
             }
         }
@@ -125,7 +135,7 @@ int main(int argc, char const *argv[])
                 std::cout << "Parallel mode: threads" << std::endl;
                 {
                     helper::utimer timer("Counting frames threads");
-                    frames_with_motion = motion_detector.count_frames_threads(workers);
+                    frames_with_motion = motion_detector->count_frames_threads(workers);
                 }
             }
             else
@@ -133,7 +143,7 @@ int main(int argc, char const *argv[])
                 std::cout << "Parallel mode: fast flow" << std::endl;
                 {
                     helper::utimer timer("Counting frames fast flow");
-                    frames_with_motion = motion_detector.count_frames_ff(workers);
+                    frames_with_motion = motion_detector->count_frames_ff(workers);
                 }
             }
         }
@@ -143,6 +153,20 @@ int main(int argc, char const *argv[])
     ulong total_frames = cap.get(cv::CAP_PROP_FRAME_COUNT);
     float percentage = (float)frames_with_motion / (float)total_frames * 100.0f;
     std::cout << "The number of frames with motion are " << frames_with_motion << "/" << total_frames << " (" << percentage << "%)" << std::endl;
+
+    delete motion_detector;
     cap.release();
     return 0;
 }
+
+// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-open_grey-open_blur-10iter-stream" -i 10 -a OPEN_CV -o | at midnight
+// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-open_grey-open_blur-10iter-data" -i 10 -a OPEN_CV -o -p | at midnight +1 hours
+
+// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-box_blur-10iter-stream" -i 10 -a BOX_BLUR | at midnight +2 hours
+// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-box_blur-10iter-data" -i 10 -a BOX_BLUR -p | at midnight +3 hours
+
+// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-h1-10iter-stream" -i 10 -a H1 | at midnight +4 hours
+// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-h1-10iter-data" -i 10 -a H1 -p | at midnight +5 hours
+
+// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-h1_7-10iter-stream" -i 10 -a H1_7 | at midnight +6 hours
+// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-h1_7-10iter-data" -i 10 -a H1_7 -p | at midnight +7 hours
