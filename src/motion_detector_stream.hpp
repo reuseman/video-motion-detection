@@ -1,89 +1,84 @@
-// create class motion_detector
 #pragma once
 #include "opencv2/opencv.hpp"
 #include "shared_queue.hpp"
 #include "frame_processing.hpp"
 #include <ff/ff.hpp>
+#include "motion_detector.h"
 
 namespace video
 {
     typedef unsigned long ulong;
 
-    struct source : ff::ff_node_t<cv::VideoCapture, cv::Mat>
-    {
-        source(const cv::VideoCapture cap) : cap(cap) {}
-
-        cv::Mat *svc(cv::VideoCapture *)
-        {
-            while (true)
-            {
-                cv::Mat *frame = new cv::Mat();
-                cap >> *frame; // maybe clone it
-                if (frame->empty())
-                {
-                    delete frame;
-                    return (EOS);
-                }
-                // std::this_thread::sleep_for(ta);
-                ff_send_out(frame);
-            }
-        }
-
-        cv::VideoCapture cap;
-    };
-
-    struct funstageF : ff::ff_node_t<cv::Mat, bool>
-    {
-        funstageF(cv::Mat background, const float motion_detection_threshold, const bool opencv_greyscale, const video::frame::BlurAlgorithm blur_algorithm) : background(background), motion_detection_threshold(motion_detection_threshold), opencv_greyscale(opencv_greyscale), blur_algorithm(blur_algorithm) {}
-
-        bool *svc(cv::Mat *frame)
-        {
-            bool *motion = new bool(video::frame::contains_motion(background, *frame, motion_detection_threshold, opencv_greyscale, blur_algorithm));
-            delete frame;
-            return motion;
-        }
-
-        const cv::Mat background;
-        const float motion_detection_threshold;
-        const bool opencv_greyscale;
-        const video::frame::BlurAlgorithm blur_algorithm;
-    };
-
-    struct sink : ff::ff_node_t<bool>
-    {
-
-        sink(ulong *frames_with_motion) : frames_with_motion(frames_with_motion) {}
-
-        bool *svc(bool *motion)
-        {
-            if (*motion)
-                (*frames_with_motion)++;
-
-            delete motion;
-            return (GO_ON);
-        }
-
-        ulong *frames_with_motion;
-    };
-
-    class MotionDetector
+    class MotionDetectorStream : public IMotionDetector
     {
     private:
         cv::VideoCapture cap;
         float threshold;
-        bool opencv_greyscale;
-        video::frame::BlurAlgorithm blur_algorithm;
         helper::SharedQueue<cv::Mat> queue;
+        struct source : ff::ff_node_t<cv::VideoCapture, cv::Mat>
+        {
+            source(const cv::VideoCapture cap) : cap(cap) {}
+
+            cv::Mat *svc(cv::VideoCapture *)
+            {
+                while (true)
+                {
+                    cv::Mat *frame = new cv::Mat();
+                    cap >> *frame; // maybe clone it
+                    if (frame->empty())
+                    {
+                        delete frame;
+                        return (EOS);
+                    }
+                    // std::this_thread::sleep_for(ta);
+                    ff_send_out(frame);
+                }
+            }
+
+            cv::VideoCapture cap;
+        };
+
+        struct funstageF : ff::ff_node_t<cv::Mat, bool>
+        {
+            funstageF(cv::Mat background, const float motion_detection_threshold) : background(background), motion_detection_threshold(motion_detection_threshold) {}
+
+            bool *svc(cv::Mat *frame)
+            {
+                bool *motion = new bool(video::frame::contains_motion(background, *frame, motion_detection_threshold));
+                delete frame;
+                return motion;
+            }
+
+            const cv::Mat background;
+            const float motion_detection_threshold;
+        };
+
+        struct sink : ff::ff_node_t<bool>
+        {
+
+            sink(ulong *frames_with_motion) : frames_with_motion(frames_with_motion) {}
+
+            bool *svc(bool *motion)
+            {
+                if (*motion)
+                    (*frames_with_motion)++;
+
+                delete motion;
+                return (GO_ON);
+            }
+
+            ulong *frames_with_motion;
+        };
 
     public:
-        MotionDetector(cv::VideoCapture cap, const float threshold, const bool opencv_greyscale, const video::frame::BlurAlgorithm blur_algorithm) : cap(cap), threshold(threshold), opencv_greyscale(opencv_greyscale), blur_algorithm(blur_algorithm) {}
-        ulong count_frames();
-        ulong count_frames_player();
-        ulong count_frames_threads(int workers);
-        ulong count_frames_ff(int workers);
+        MotionDetectorStream(cv::VideoCapture cap, const float threshold) : cap(cap), threshold(threshold) {}
+        virtual ulong count_frames();
+        virtual ulong count_frames_player();
+        virtual ulong count_frames_threads(int workers);
+        virtual ulong count_frames_ff(int workers);
     };
 
-    ulong MotionDetector::count_frames()
+    ulong MotionDetectorStream::count_frames()
     {
         cv::Mat background_frame, frame;
         ulong frames_with_motion = 0;
@@ -94,12 +89,12 @@ namespace video
 
         this->cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
         this->cap >> background_frame;
-        video::frame::preprocess(background_frame, this->opencv_greyscale, this->blur_algorithm);
+        video::frame::preprocess(background_frame);
 
         cap >> frame;
         while (!frame.empty())
         {
-            if (video::frame::contains_motion(background_frame, frame, this->threshold, this->opencv_greyscale, this->blur_algorithm))
+            if (video::frame::contains_motion(background_frame, frame, this->threshold))
             {
                 frames_with_motion++;
 #if MOTION_VERBOSE
@@ -116,13 +111,13 @@ namespace video
         return frames_with_motion;
     }
 
-    ulong MotionDetector::count_frames_player()
+    ulong MotionDetectorStream::count_frames_player()
     {
         cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
         cv::Mat background_frame;
         cv::Mat frame;
         cap >> background_frame;
-        video::frame::preprocess(background_frame, opencv_greyscale, blur_algorithm);
+        video::frame::preprocess(background_frame);
 
         cv::namedWindow("Video", cv::WINDOW_AUTOSIZE);
         cv::setWindowProperty("Video", cv::WND_PROP_TOPMOST, cv::WINDOW_AUTOSIZE);
@@ -131,7 +126,7 @@ namespace video
         cap >> frame;
         while (!frame.empty())
         {
-            if (video::frame::contains_motion(background_frame, frame, this->threshold, this->opencv_greyscale, this->blur_algorithm))
+            if (video::frame::contains_motion(background_frame, frame, this->threshold))
             {
                 frames_with_motion++;
                 video::frame::add_red_border(frame);
@@ -147,7 +142,7 @@ namespace video
         return frames_with_motion;
     }
 
-    ulong MotionDetector::count_frames_threads(int workers)
+    ulong MotionDetectorStream::count_frames_threads(int workers)
     {
         this->cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
         helper::SharedQueue<cv::Mat> queue;
@@ -156,7 +151,7 @@ namespace video
 
         cv::Mat background_frame;
         this->cap >> background_frame;
-        video::frame::preprocess(background_frame, this->opencv_greyscale, this->blur_algorithm);
+        video::frame::preprocess(background_frame);
 
 #if MOTION_VERBOSE
         std::cout << "Starting " << workers << " threads" << std::endl;
@@ -177,7 +172,7 @@ namespace video
                     break;
                 }
 
-                if (video::frame::contains_motion(background_frame, frame,  this->threshold, this->opencv_greyscale, this->blur_algorithm))
+                if (video::frame::contains_motion(background_frame, frame,  this->threshold))
                     local_counter++;
             } }));
         }
@@ -192,6 +187,7 @@ namespace video
                 // Push empty frame to all threads to signal them the EOS
                 for (auto &t : threads)
                     queue.push(frame);
+                // std::cout << "finished to push frames" << std::endl;
                 break;
             }
 
@@ -205,19 +201,19 @@ namespace video
         return frames_with_motion;
     }
 
-    ulong MotionDetector::count_frames_ff(int workers)
+    ulong MotionDetectorStream::count_frames_ff(int workers)
     {
         this->cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
         // Get the preprocessed background
         cv::Mat background;
         this->cap >> background;
-        video::frame::preprocess(background, this->opencv_greyscale, this->blur_algorithm);
+        video::frame::preprocess(background);
 
         // Initialize workers for the ff_Farm
         std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
         for (int i = 0; i < workers; i++)
         {
-            workers_nodes.push_back(std::make_unique<funstageF>(background, this->threshold, this->opencv_greyscale, this->blur_algorithm));
+            workers_nodes.push_back(std::make_unique<funstageF>(background, this->threshold));
         }
 
         // Create the farm
