@@ -2,13 +2,14 @@
 #include <functional>
 
 #include "opencv2/opencv.hpp"
-#include "frame_processing.hpp"
 #include "argparse.hpp"
 #include "benchmark.hpp"
 #include "utimer.hpp"
-#include "motion_detector.h"
-#include "motion_detector_stream.hpp"
-#include "motion_detector_buffer.hpp"
+
+#include "processing/motion_detector.h"
+#include "processing/motion_detector_stream.hpp"
+#include "processing/motion_detector_buffer.hpp"
+#include "processing/frame.hpp"
 
 #define PROGRAM_VERSION "0.1"
 

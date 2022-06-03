@@ -2,8 +2,8 @@
 #include <chrono>
 
 #include "opencv2/opencv.hpp"
-#include "frame_processing.hpp"
 #include "argparse.hpp"
+#include "processing/frame.hpp"
 
 #define PROGRAM_VERSION "0.1"
 
