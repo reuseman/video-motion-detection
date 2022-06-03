@@ -109,7 +109,9 @@ int main(int argc, char const *argv[])
             { return motion_detector->count_frames_threads(workers); };
             auto count_frames_ff = [&](int workers) -> unsigned long
             { return motion_detector->count_frames_ff(workers); };
-            helper::benchmark(benchmark_name, it, count_frames, std::vector<std::function<unsigned long(int)>>{count_frames_threads, count_frames_ff}, std::vector<std::string>{"threads", "ff"}, total_frames);
+            auto count_frames_omp = [&](int workers) -> unsigned long
+            { return motion_detector->count_frames_omp(workers); };
+            helper::benchmark(benchmark_name, it, count_frames, std::vector<std::function<unsigned long(int)>>{count_frames_threads, count_frames_ff, count_frames_omp}, std::vector<std::string>{"threads", "ff", "omp"}, total_frames);
         }
     }
     else

@@ -16,6 +16,7 @@ namespace video
         virtual ulong count_frames_player() = 0;
         virtual ulong count_frames_threads(int workers) = 0;
         virtual ulong count_frames_ff(int workers) = 0;
+        virtual ulong count_frames_omp(int workers) = 0;
     };
 
 }

@@ -85,6 +85,7 @@ namespace video
         ulong count_frames_threads(int workers);
         ulong count_frames_parallel_for(int workers);
         ulong count_frames_ff(int workers);
+        ulong count_frames_omp(int workers);
     };
 
     ulong MotionDetectorBuffer::count_frames()
@@ -230,6 +231,40 @@ namespace video
         }
         // ff::ffTime(ff::STOP_TIME);
         // std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
+        return frames_with_motion;
+    }
+
+
+    ulong MotionDetectorBuffer::count_frames_omp(int workers)
+    {
+        this->cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
+        ulong frames_with_motion = 0;
+
+        cv::Mat background_frame;
+        this->cap >> background_frame;
+        video::frame::preprocess(background_frame);
+
+#if MOTION_VERBOSE
+        std::cout << "Starting " << workers << " omp" << std::endl;
+#endif
+
+#pragma omp parallel num_threads(workers)
+// Emitter
+#pragma omp single
+        while (true)
+        {
+            cv::Mat frame;
+            this->cap >> frame;
+            if (frame.empty())
+                break;
+#pragma omp task
+            {
+                if (video::frame::contains_motion(background_frame, frame, this->threshold))
+#pragma omp atomic
+                    frames_with_motion++;
+            }
+        }
+
         return frames_with_motion;
     }
 } // namespace video
