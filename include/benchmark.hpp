@@ -60,10 +60,9 @@ namespace helper
     auto par_time_1 = measure<>::duration(g, args..., 1).count();
     for (int i = 1; i <= processor_count; i = 2 * i)
     {
-      // Test parallel function with i cores
-      cout << "Parallel translation with " << i << " threads" << endl;
+      // Test parallel function with i threads
       auto us = measure<>::duration(g, args..., i).count();
-      cout << "Par time with " << i << " cores: " << us << " us" << endl;
+      cout << "Par time with " << i << " threads: " << us << " us" << endl;
       ofstrm << trial_name << "," << id << ",par, " << i << "," << us << "," << (double)1 / us << "," << (double)seq_time / us << "," << (double)par_time_1 / us << "," << (double)(seq_time / i) / us << endl;
     }
     ofstrm.close();
@@ -100,7 +99,7 @@ namespace helper
 
     // Write results to file
     ofstrm << std::fixed << setprecision(2) << endl;
-    ofstrm << trial_name << ","  << items << "," << id << ",seq, 1," << seq_time << "," << 1 << "," << 1 << "," << 1 << "," << 1 << "," << 1 << endl;
+    ofstrm << trial_name << ","  << items << "," << id << ",seq, 1," << seq_time << "," << seq_time / items << "," << 1 / (seq_time / items) << "," << 1 << "," << 1 << "," << 1 << endl;
 
     for (int i = 0; i < g.size(); i++)
     {
@@ -109,18 +108,20 @@ namespace helper
       auto par_time_1 = measure<>::duration(g_i, args..., 1).count();
       cout << "Parallel benchmark of " << name << endl;
 
-      std::vector<int> workers = {1};
-      for (int j = 2; j <= processor_count; j = 2 + j)
-      {
-        workers.push_back(j);
-      }
+      // std::vector<int> workers = {1};
+      // for (int j = 2; j <= 256; j = 2 + j)
+      // {
+      //   workers.push_back(j);
+      // }
 
-      // Test parallel function with j cores
-      // for (int j = 1; j <= processor_count; j = 2 * j)
-      for (auto j : workers)     
+      // std::vector<int> workers = {1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256};
+
+      // Test parallel function with j threads
+      for (int j = 1; j <= 256; j = 2 * j)
+      // for (auto j : workers)     
       {
         auto us = measure<>::duration(g_i, args..., j).count();
-        cout << "Par time with " << j << " cores: " << us << " us" << endl;
+        cout << "Par time with " << j << " threads: " << us << " us" << endl;
         auto completion_time = us;
         auto service_time = us/items;
         auto bandwith = (double)1 / service_time;
