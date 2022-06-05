@@ -25,13 +25,12 @@ namespace video
                 while (true)
                 {
                     cv::Mat *frame = new cv::Mat();
-                    cap >> *frame; // maybe clone it
+                    cap >> *frame;
                     if (frame->empty())
                     {
                         delete frame;
                         return (EOS);
                     }
-                    // std::this_thread::sleep_for(ta);
                     ff_send_out(frame);
                 }
             }
