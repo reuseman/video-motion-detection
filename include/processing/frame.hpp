@@ -54,7 +54,7 @@ namespace video::frame
                 for (int k = -radius; k <= radius; k++)
                 {
                     for (int l = -radius; l <= radius; l++)
-                        sum += old_frame.at<uchar>(row + k, col + l) * kernel.at<double>(k + radius, l + radius);
+                        sum += old_frame.at<uchar>(row + k, col + l) * kernel.at<short>(k + radius, l + radius);
                 }
                 frame.at<uchar>(row, col) = sum / total_weight;
             }

@@ -5,7 +5,6 @@
 #include "motion_detector.h"
 #include "frame.hpp"
 
-
 namespace video
 {
     typedef unsigned long ulong;
@@ -19,34 +18,34 @@ namespace video
         std::vector<cv::Mat> frames;
         struct source : ff::ff_node_t<std::vector<cv::Mat>, cv::Mat>
         {
-            source(const std::vector<cv::Mat> frames) : frames(frames) {}
+            source(std::vector<cv::Mat> *frames) : frames(frames) {}
 
             cv::Mat *svc(std::vector<cv::Mat> *)
             {
-                for (int i = 1; i < frames.size(); i++)
+                for (int i = 1; i < frames->size(); i++)
                 {
                     cv::Mat *frame = new cv::Mat();
-                    *frame = frames[i];
+                    *frame = frames->at(i);
                     ff_send_out(frame);
                 }
                 return (EOS);
             }
 
-            std::vector<cv::Mat> frames;
+            const std::vector<cv::Mat> *frames;
         };
 
         struct funstageF : ff::ff_node_t<cv::Mat, bool>
         {
-            funstageF(cv::Mat background, const float motion_detection_threshold) : background(background), motion_detection_threshold(motion_detection_threshold) {}
+            funstageF(cv::Mat *background, const float motion_detection_threshold) : background(background), motion_detection_threshold(motion_detection_threshold) {}
 
             bool *svc(cv::Mat *frame)
             {
-                bool *motion = new bool(video::frame::contains_motion(background, *frame, motion_detection_threshold));
+                bool *motion = new bool(video::frame::contains_motion(*background, *frame, motion_detection_threshold));
                 delete frame;
                 return motion;
             }
 
-            const cv::Mat background;
+            const cv::Mat *background;
             const float motion_detection_threshold;
         };
 
@@ -213,16 +212,17 @@ namespace video
         std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
         for (int i = 0; i < workers; i++)
         {
-            workers_nodes.push_back(std::make_unique<funstageF>(background, this->threshold));
+            workers_nodes.push_back(std::make_unique<funstageF>(&background, this->threshold));
         }
 
         // Create the farm
         ulong frames_with_motion = 0;
         ff::ff_Farm<cv::Mat, bool> farm(std::move(workers_nodes));
-        source emitter(this->frames);
+        source emitter(&this->frames);
         sink collector(&frames_with_motion);
         farm.add_emitter(emitter);
         farm.add_collector(collector);
+        farm.set_scheduling_ondemand();
 
         // ff::ffTime(ff::START_TIME);
         if (farm.run_and_wait_end() < 0)
@@ -232,9 +232,9 @@ namespace video
         }
         // ff::ffTime(ff::STOP_TIME);
         // std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
+        // farm.ffStats(std::cout);
         return frames_with_motion;
     }
-
 
     ulong MotionDetectorBuffer::count_frames_omp(int workers)
     {
