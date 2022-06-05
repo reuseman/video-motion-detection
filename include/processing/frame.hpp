@@ -142,8 +142,8 @@ namespace video::frame
     void add_red_border(cv::Mat &frame)
     {
         // Add back the RGB channels to show a red border of 1% of the height
-        cv::Mat channels[3] = {frame, frame, frame};
-        cv::merge(channels, 3, frame);
+        // cv::Mat channels[3] = {frame, frame, frame};
+        // cv::merge(channels, 3, frame);
         cv::rectangle(frame, cv::Point(0, 0), cv::Point(frame.cols, frame.rows), cv::Scalar(0, 0, 255), frame.size().height * 0.01);
     }
 
