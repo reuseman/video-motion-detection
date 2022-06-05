@@ -16,41 +16,41 @@ namespace video
         cv::VideoCapture cap;
         float threshold;
         helper::SharedQueue<cv::Mat> queue;
-        struct source : ff::ff_node_t<cv::VideoCapture, cv::Mat>
+        
+        struct source : ff::ff_node_t<cv::Mat>
         {
-            source(const cv::VideoCapture cap) : cap(cap) {}
+            source(cv::VideoCapture *cap) : cap(cap) {}
 
-            cv::Mat *svc(cv::VideoCapture *)
+            cv::Mat *svc(cv::Mat *)
             {
                 while (true)
                 {
                     cv::Mat *frame = new cv::Mat();
-                    cap >> *frame; // maybe clone it
+                    (*cap) >> *frame;
                     if (frame->empty())
                     {
                         delete frame;
                         return (EOS);
                     }
-                    // std::this_thread::sleep_for(ta);
                     ff_send_out(frame);
                 }
             }
 
-            cv::VideoCapture cap;
+            cv::VideoCapture *cap;
         };
 
         struct funstageF : ff::ff_node_t<cv::Mat, bool>
         {
-            funstageF(cv::Mat background, const float motion_detection_threshold) : background(background), motion_detection_threshold(motion_detection_threshold) {}
+            funstageF(cv::Mat *background, const float motion_detection_threshold) : background(background), motion_detection_threshold(motion_detection_threshold) {}
 
             bool *svc(cv::Mat *frame)
             {
-                bool *motion = new bool(video::frame::contains_motion(background, *frame, motion_detection_threshold));
+                bool *motion = new bool(video::frame::contains_motion(*background, *frame, motion_detection_threshold));
                 delete frame;
                 return motion;
             }
 
-            const cv::Mat background;
+            const cv::Mat* background;
             const float motion_detection_threshold;
         };
 
@@ -215,16 +215,17 @@ namespace video
         std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
         for (int i = 0; i < workers; i++)
         {
-            workers_nodes.push_back(std::make_unique<funstageF>(background, this->threshold));
+            workers_nodes.push_back(std::make_unique<funstageF>(&background, this->threshold));
         }
 
         // Create the farm
         ulong frames_with_motion = 0;
         ff::ff_Farm<cv::Mat, bool> farm(std::move(workers_nodes));
-        source emitter(this->cap);
+        source emitter(&this->cap);
         sink collector(&frames_with_motion);
         farm.add_emitter(emitter);
         farm.add_collector(collector);
+        farm.set_scheduling_ondemand();
 
         // ff::ffTime(ff::START_TIME);
         if (farm.run_and_wait_end() < 0)
@@ -234,6 +235,9 @@ namespace video
         }
         // ff::ffTime(ff::STOP_TIME);
         // std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
+        
+        // farm.ffStats(std::cout);
+        
         return frames_with_motion;
     }
 

@@ -33,7 +33,7 @@ int main(int argc, char const *argv[])
     parser.add_argument("-s", "--source-video").required().help("path of the source video");
     parser.add_argument("-t", "--threshold").help("threshold for the motion detection").default_value(0.6).scan<'g', double>();
     parser.add_argument("-w", "--workers").default_value(0).help("number of workers (0 for sequential)").scan<'i', int>();
-    parser.add_argument("-m", "--parallel-mode").default_value(0).help("parallel mode (0: threads, 1: fast flow)").scan<'i', int>();
+    parser.add_argument("-m", "--parallel-mode").default_value(0).help("parallel mode (0: threads, 1: fast flow, 2: OpenMP)").scan<'i', int>();
     parser.add_argument("-pl", "--player").default_value(false).implicit_value(true).help("shows the video player with workers = 0 (ESC to exit)");
     parser.add_argument("-b", "--benchmark").default_value(std::string("")).help("benchmark mode is enabled and appends the results with the specified name in results.csv");
     parser.add_argument("-i", "--iterations").default_value(5).help("benchmark mode is executed with the specified number of iterations").scan<'i', int>();
@@ -141,7 +141,7 @@ int main(int argc, char const *argv[])
                     frames_with_motion = motion_detector->count_frames_threads(workers);
                 }
             }
-            else
+            else if (parallel_mode == 1)
             {
                 std::cout << "Parallel mode: fast flow" << std::endl;
                 {
@@ -149,27 +149,23 @@ int main(int argc, char const *argv[])
                     frames_with_motion = motion_detector->count_frames_ff(workers);
                 }
             }
+            else
+            {
+                std::cout << "Parallel mode: OpenMP" << std::endl;
+                {
+                    helper::utimer timer("Counting frames OpenMP");
+                    frames_with_motion = motion_detector->count_frames_omp(workers);
+                }
+            }
         }
-    }
 
-    // Print the results
-    ulong total_frames = cap.get(cv::CAP_PROP_FRAME_COUNT);
-    float percentage = (float)frames_with_motion / (float)total_frames * 100.0f;
-    std::cout << "The number of frames with motion are " << frames_with_motion << "/" << total_frames << " (" << percentage << "%)" << std::endl;
+        // Print the results
+        ulong total_frames = cap.get(cv::CAP_PROP_FRAME_COUNT);
+        float percentage = (float)frames_with_motion / (float)total_frames * 100.0f;
+        std::cout << "The number of frames with motion are " << frames_with_motion << "/" << total_frames << " (" << percentage << "%)" << std::endl;
+    }
 
     delete motion_detector;
     cap.release();
     return 0;
 }
-
-// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-open_grey-open_blur-10iter-stream" -i 10 -a OPEN_CV -o | at midnight
-// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-open_grey-open_blur-10iter-data" -i 10 -a OPEN_CV -o -p | at midnight +1 hours
-
-// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-box_blur-10iter-stream" -i 10 -a BOX_BLUR | at midnight +2 hours
-// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-box_blur-10iter-data" -i 10 -a BOX_BLUR -p | at midnight +3 hours
-
-// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-h1-10iter-stream" -i 10 -a H1 | at midnight +4 hours
-// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-h1-10iter-data" -i 10 -a H1 -p | at midnight +5 hours
-
-// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-h1_7-10iter-stream" -i 10 -a H1_7 | at midnight +6 hours
-// /home/a.colucci16/motion-detection/build/motion-detection -s ../assets/door.mov -b "door-h1_7-10iter-data" -i 10 -a H1_7 -p | at midnight +7 hours
