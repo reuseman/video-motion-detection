@@ -233,6 +233,11 @@ namespace video
         // ff::ffTime(ff::STOP_TIME);
         // std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
         // farm.ffStats(std::cout);
+
+#if MOTION_VERBOSE
+        farm.ffStats(std::cout);
+#endif
+        
         return frames_with_motion;
     }
 

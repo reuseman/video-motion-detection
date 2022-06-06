@@ -16,7 +16,7 @@ namespace video
         cv::VideoCapture cap;
         float threshold;
         helper::SharedQueue<cv::Mat> queue;
-        
+
         struct source : ff::ff_node_t<cv::Mat>
         {
             source(cv::VideoCapture *cap) : cap(cap) {}
@@ -50,7 +50,7 @@ namespace video
                 return motion;
             }
 
-            const cv::Mat* background;
+            const cv::Mat *background;
             const float motion_detection_threshold;
         };
 
@@ -225,7 +225,7 @@ namespace video
         sink collector(&frames_with_motion);
         farm.add_emitter(emitter);
         farm.add_collector(collector);
-        farm.set_scheduling_ondemand();
+        // farm.set_scheduling_ondemand();
 
         // ff::ffTime(ff::START_TIME);
         if (farm.run_and_wait_end() < 0)
@@ -235,9 +235,11 @@ namespace video
         }
         // ff::ffTime(ff::STOP_TIME);
         // std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
-        
-        // farm.ffStats(std::cout);
-        
+
+// #if MOTION_VERBOSE
+//         farm.ffStats(std::cout);
+// #endif
+
         return frames_with_motion;
     }
 
