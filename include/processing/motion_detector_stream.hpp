@@ -1,5 +1,7 @@
 #pragma once
-#include <ff/ff.hpp>
+
+#include "ff/ff.hpp"
+#include "fastflow_nodes.hpp"
 
 #include "opencv2/opencv.hpp"
 #include "shared_queue.hpp"
@@ -16,60 +18,6 @@ namespace video
         cv::VideoCapture cap;
         float threshold;
         helper::SharedQueue<cv::Mat> queue;
-        
-        struct source : ff::ff_node_t<cv::Mat>
-        {
-            source(cv::VideoCapture *cap) : cap(cap) {}
-
-            cv::Mat *svc(cv::Mat *)
-            {
-                while (true)
-                {
-                    cv::Mat *frame = new cv::Mat();
-                    (*cap) >> *frame;
-                    if (frame->empty())
-                    {
-                        delete frame;
-                        return (EOS);
-                    }
-                    ff_send_out(frame);
-                }
-            }
-
-            cv::VideoCapture *cap;
-        };
-
-        struct funstageF : ff::ff_node_t<cv::Mat, bool>
-        {
-            funstageF(cv::Mat *background, const float motion_detection_threshold) : background(background), motion_detection_threshold(motion_detection_threshold) {}
-
-            bool *svc(cv::Mat *frame)
-            {
-                bool *motion = new bool(video::frame::contains_motion(*background, *frame, motion_detection_threshold));
-                delete frame;
-                return motion;
-            }
-
-            const cv::Mat* background;
-            const float motion_detection_threshold;
-        };
-
-        struct sink : ff::ff_node_t<bool>
-        {
-
-            sink(ulong *frames_with_motion) : frames_with_motion(frames_with_motion) {}
-
-            bool *svc(bool *motion)
-            {
-                if (*motion)
-                    (*frames_with_motion)++;
-
-                delete motion;
-                return (GO_ON);
-            }
-
-            ulong *frames_with_motion;
-        };
 
     public:
         MotionDetectorStream(cv::VideoCapture cap, const float threshold) : cap(cap), threshold(threshold) {}
@@ -214,15 +162,13 @@ namespace video
         // Initialize workers for the ff_Farm
         std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
         for (int i = 0; i < workers; i++)
-        {
-            workers_nodes.push_back(std::make_unique<funstageF>(&background, this->threshold));
-        }
+            workers_nodes.push_back(std::make_unique<ff_worker>(&background, this->threshold));
 
         // Create the farm
         ulong frames_with_motion = 0;
-        ff::ff_Farm<cv::Mat, bool> farm(std::move(workers_nodes));
-        source emitter(&this->cap);
-        sink collector(&frames_with_motion);
+        ff::ff_Farm<task> farm(std::move(workers_nodes));
+        ff_emitter_stream emitter(&this->cap);
+        ff_collector collector(&frames_with_motion);
         farm.add_emitter(emitter);
         farm.add_collector(collector);
         farm.set_scheduling_ondemand();
@@ -235,9 +181,11 @@ namespace video
         }
         // ff::ffTime(ff::STOP_TIME);
         // std::cout << "Farm time: " << ff::ffTime(ff::GET_TIME) << std::endl;
-        
-        // farm.ffStats(std::cout);
-        
+
+#if MOTION_VERBOSE
+        farm.ffStats(std::cout);
+#endif
+
         return frames_with_motion;
     }
 
