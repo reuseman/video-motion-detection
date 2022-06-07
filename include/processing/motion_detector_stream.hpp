@@ -18,6 +18,63 @@ namespace video
         cv::VideoCapture cap;
         float threshold;
         helper::SharedQueue<cv::Mat> queue;
+<<<<<<< HEAD
+=======
+
+        struct source : ff::ff_node_t<cv::Mat>
+        {
+            source(cv::VideoCapture *cap) : cap(cap) {}
+
+            cv::Mat *svc(cv::Mat *)
+            {
+                while (true)
+                {
+                    cv::Mat *frame = new cv::Mat();
+                    (*cap) >> *frame;
+                    if (frame->empty())
+                    {
+                        delete frame;
+                        return (EOS);
+                    }
+                    ff_send_out(frame);
+                }
+            }
+
+            cv::VideoCapture *cap;
+        };
+
+        struct funstageF : ff::ff_node_t<cv::Mat, bool>
+        {
+            funstageF(cv::Mat *background, const float motion_detection_threshold) : background(background), motion_detection_threshold(motion_detection_threshold) {}
+
+            bool *svc(cv::Mat *frame)
+            {
+                bool *motion = new bool(video::frame::contains_motion(*background, *frame, motion_detection_threshold));
+                delete frame;
+                return motion;
+            }
+
+            const cv::Mat *background;
+            const float motion_detection_threshold;
+        };
+
+        struct sink : ff::ff_node_t<bool>
+        {
+
+            sink(ulong *frames_with_motion) : frames_with_motion(frames_with_motion) {}
+
+            bool *svc(bool *motion)
+            {
+                if (*motion)
+                    (*frames_with_motion)++;
+
+                delete motion;
+                return (GO_ON);
+            }
+
+            ulong *frames_with_motion;
+        };
+>>>>>>> e0b95da3b322c9e10c85179d8b745916322d369c
 
     public:
         MotionDetectorStream(cv::VideoCapture cap, const float threshold) : cap(cap), threshold(threshold) {}
@@ -171,7 +228,7 @@ namespace video
         ff_collector collector(&frames_with_motion);
         farm.add_emitter(emitter);
         farm.add_collector(collector);
-        farm.set_scheduling_ondemand();
+        // farm.set_scheduling_ondemand();
 
         // ff::ffTime(ff::START_TIME);
         if (farm.run_and_wait_end() < 0)
