@@ -105,7 +105,8 @@ namespace helper
     {
       G g_i = g[i];
       std::string name = names[i];
-      auto par_time_1 = measure<>::duration(g_i, args..., 1).count();
+      // auto par_time_1 = measure<>::duration(g_i, args..., 1).count();
+      auto par_time_1 = seq_time;
       cout << "Parallel benchmark of " << name << endl;
 
       // std::vector<int> workers = {1};
@@ -122,6 +123,9 @@ namespace helper
       {
         auto us = measure<>::duration(g_i, args..., j).count();
         cout << "Par time with " << j << " threads: " << us << " us" << endl;
+        if (j == 1)
+          par_time_1 = us;
+        
         auto completion_time = us;
         auto service_time = us/items;
         auto bandwith = (double)1 / service_time;
