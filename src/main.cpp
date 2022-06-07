@@ -75,6 +75,8 @@ int main(int argc, char const *argv[])
     std::cout << "Blur algorithm: H4" << std::endl;
 #elif BLUR == 5
     std::cout << "Blur algorithm: OPEN_CV" << std::endl;
+#elif BLUR == 7
+    std::cout << "Blur algorithm: H1_7" << std::endl;
 #else
     std::cout << "Blur algorithm: Box blur" << std::endl;
 #endif
