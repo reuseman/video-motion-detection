@@ -39,9 +39,6 @@ namespace video::frame
     // O(mn)
     void apply_kernel(cv::Mat &frame, cv::Mat kernel)
     {
-        assert(kernel.rows == kernel.cols);
-        assert(kernel.rows % 2 == 1);
-
         int radius = (kernel.rows - 1) / 2;
         int total_weight = cv::sum(kernel)[0];
         cv::Mat old_frame = frame.clone();
@@ -63,7 +60,6 @@ namespace video::frame
 
     void box_blur(cv::Mat &frame, int kernel_size)
     {
-        assert(kernel_size % 2 == 1);
         int radius = (kernel_size - 1) / 2;
 
         // Vertical pass
@@ -97,16 +93,8 @@ namespace video::frame
         }
     }
 
-    void preprocess(cv::Mat &frame)
+    void apply_blur(cv::Mat &frame)
     {
-
-// Apply greyscale
-#if OPENCV_GREYSCALE
-        cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
-#else
-        grayscale(frame);
-#endif
-
         // Apply blur
 #if BLUR == 1
         apply_kernel(frame, blur_h1);
@@ -125,12 +113,37 @@ namespace video::frame
 #endif
     }
 
+    void preprocess(cv::Mat &frame)
+    {
+
+// Apply greyscale
+#if OPENCV_GREYSCALE
+        cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
+#else
+        grayscale(frame);
+#endif
+
+        // Apply blur
+        apply_blur(frame);
+    }
+
     // Complexity O(nm)
     bool contains_motion(cv::Mat background_frame, cv::Mat current_frame, float motion_detection_threshold)
     {
         cv::Mat diff;
         preprocess(current_frame);
 
+        absdiff(background_frame, current_frame, diff);
+
+        // Count the number of pixels that are above the threshold
+        int count = countNonZero(diff);
+        float difference_percentage = (float)count / (float)(diff.rows * diff.cols);
+        return difference_percentage > motion_detection_threshold;
+    }
+
+    bool difference_bigger_than_threshold(cv::Mat background_frame, cv::Mat current_frame, float motion_detection_threshold)
+    {
+        cv::Mat diff;
         absdiff(background_frame, current_frame, diff);
 
         // Count the number of pixels that are above the threshold
