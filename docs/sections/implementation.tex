@@ -1,0 +1,95 @@
+\section{Implementation}
+\label{sec:implementation}
+This section explains the implementations details and defines the documentation necessary to understand how to replicate the experiments conducted.
+
+\subsection{Details}
+\label{sec:implementation-details}
+Several parallel solutions have been proposed, namely C\texttt{++} Threads, FastFlow and OpenMP. For each of them, there is an implementation that allows motion to be detected on a video stream and an implementation that instead first reads the entire video and only then performs the computation. The motivation behind the last case, is to understand how much impact the $r$ function has in some cases.
+
+\paragraph{C\texttt{++} Threads}
+As for the solution with C\texttt{++} threads, it is structured in the following way. It's a fork-join model that to handle synchronization uses a safe queue and an accumulator of atomic type to maintain the number of frames with motion.
+Threads are created, which will go and read frames from the queue and terminate only when an empty frame arrives. On the other hand, the emitter reads frames from the video and places them in the queue. When it reaches the end of the video, it will insert a number of empty frames, as many as the number of threads, to signal the end of the stream (EOS). Two approaches are proposed, one where the pinning technique is not used and one where it is used.
+
+\paragraph{FastFlow}
+The implementation of FastFlow, on the other hand, involves the high level parallel patterns and several normal forms \cref{eq:normal-form} have been tried:
+\begin{itemize}
+    \item farm with emitter, workers and the collector to accumulate;
+    \item farm as above, but without the collector. Each worker will accumulate the number in a local counter and at the end they will increase the global counter that is an atomic variable;
+    \item farm with emitter, workers and the collector to accumulate, but with the on demand scheduling.
+\end{itemize}
+Since one of the advantages of fast flow is the speed of stacking different skeletons, the farm pipeline \cref{eq:pipe} was also tried in this case
+
+\paragraph{OpenMP} The OpenMP was a later implementation, born out of the need to have a third comparison. Here we simply use a single block to create the tasks, and then a task block to perform motion detection with a synchronization point to increase the accumulator, which is an atomic block.
+
+\subsection{Documentation}
+Here a description of how the project is structured, how to compile, execute and see the results.
+
+\subsubsection{Download}
+Firstly, in order to download the \href{https://github.com/reuseman/video-motion-detection}{project}, execute the following commands:
+
+\begin{minted}[breaklines,frame=single]{bash}
+  $ git clone https://github.com/reuseman/video-motion-detection
+  $ cd video-motion-detection/
+  $ ./include/ff/mapping_string.sh
+\end{minted}
+
+\subsubsection{Project structure}
+Here there is a brief introduction on the most important things that can be found in the project folder.
+
+\dirtree{%
+.1 docs/ : the LaTeX source for this report;.
+.1 include/ : the header files;.
+.2 ff/ : fastflow framework;.
+.2 processing/ : motion detection implementation;.
+.2 benchmark.hpp : a tool to benchmark functions;.
+.2 shared\_queue.hpp :  multiple producer/consumer queue;.
+.2 \ldots : other files.
+.1 src/ : the main programs:.
+.2 main.cpp :  to detect motion and benchmark;.
+.2 meter.cpp : to benchamrk the single functions;.
+.1 videos/ : the videos used for the experiments;.
+.1 views/ : Python Notebook to visualize results;.
+.1 \ldots : other files.
+}
+\subsubsection{Compile}
+By running CMake you can define at compile time what will be the blur algorithm or kernel used in the executable. To do this we need to set the \mintinline{bash}{CMAKE_BUILD_TYPE} flag to one of the following values: \mintinline{bash}{OPEN_CV_BLUR}, \mintinline{bash}{H1}, \mintinline{bash}{H2}, \mintinline{bash}{H3}, \mintinline{bash}{H4}, \mintinline{bash}{H1_7}, \mintinline{bash}{BOX_BLUR}. Respectively those described in \cref{sec:methodology}. By default the last one will be used.
+\begin{minted}[breaklines,frame=single]{bash}
+  $ cd video-motion-detection/
+  $ ./include/ff/mapping_string.sh
+  $ mkdir build && cd build/
+  $ cmake -DCMAKE_BUILD_TYPE=BOX_BLUR ..
+  $ make
+\end{minted}
+
+\subsubsection{Execute}
+At this point, you will have two executables \mintinline{bash}{meter} and \mintinline{bash}{motion-detection}. In order to see the full documentation, use \mintinline{bash}{./motion-detection -h}.
+
+The first one, \mintinline{bash}{meter}, allows you to estimate in microseconds the execution time of individual functions $r,g,b,m$ given an input video.
+\begin{minted}[breaklines,frame=single]{bash}
+  $ ./meter -s ../videos/house720.mp4
+\end{minted}
+
+While \mintinline{bash}{main.cpp} which represents the actual program has two facets.
+\begin{itemize}
+    \item to perform motion detection on a video;
+    \item to perform a full benchmark of the motion detection a video with the different parallel implementations with threads from $1,2,4,8,\ldots,32$.
+\end{itemize}
+\begin{minted}[breaklines,frame=single]{bash}
+  $ ./motion-detection -s ../videos/house720.mp4
+  $ ./motion-detection -s ../videos/house720.mp4 -w 16 -m 1
+  $ ./motion-detection -s ../videos/house720.mp4 -b benchmark-house-box_blur-5iter -i 5
+\end{minted}
+Let us explain the above examples.
+The first command allows the algorithm to run sequentially on the video.
+The second one, on the other hand, allows executing the algorithm in a parallel with a number of workers equal to 16 and with FastFlow.
+The third on the other hand allows you to start the benchmark function, which will run C++ threads, FastFlow and OpenMP. Each of them with a number of workers ranging from $1,2,4,8,\ldots,32$ and will be repeated a number of times equal to the iterations $i$. The result will be written to a \mintinline{bash}{results.csv} file with the name of the run called \mintinline{bash}{benchmark-house-box_blur-5iter}.
+
+\subsubsection{Visualize results}
+Finally, the results of the csv file can be viewed in the Jupyter Notebook by executing the following commands.
+\begin{minted}[breaklines,frame=single]{bash}
+  $ cd video-motion-detection/
+  $ python3 -m venv .venv
+  $ source .venv/bin/activate
+  $ pip install -r view/requirements.txt
+  $ jupyter notebook
+\end{minted}

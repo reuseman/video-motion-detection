@@ -1,0 +1,40 @@
+\section{Introduction}
+The following report explores a possible way to parallelize the solution to the problem of counting the number of frames containing motion in a given video stream $S$.
+A simple but effective algorithm is to apply a grayscale and blur effect to the frames. Then the first frame is taken as the background and for each of the subsequent frames, calculate the difference between the frame and the background in terms of pixels. If the number exceeds a certain threshold, it means there is motion.
+At this point, the algorithm needed to achieve the goal can be seen as a composition of the following functions:
+\begin{itemize}
+	\item $r$ reads a frame $f$ belonging to a stream $S$ with a resolution of height $h$ and width $w$;
+	\item $g$ applies grayscale on a given frame $f$ by reducing from 3 channels (RGB) to a single one;
+	\item $b$ applies blur on a given frame $f$ of 1 channel;
+	\item $m$ computes the difference between the background frames and the analyzed frame and checks whether there is motion or not.
+\end{itemize}
+
+Since the domain concerns videos and no assumptions can be made about their length, the safest choice is to use a streaming parallel approach. Moreover, the computation on one frame $f$ is independent of the others (except the background) and this does not imply any requirement on the ordering of the frames. In other words, it is an embarrassingly parallel problem. 
+
+\subsection{Methodology}
+\label{sec:methodology}
+Let us briefly describe the methodology that will be used to conduct the experiment. 
+
+Based on the above assumptions, the proposed goal is to find the skeleton with the best service time $T_s$ and analyze the speedup as the parameters change. In this case, the videos and the blur algorithms. 
+\begin{itemize}
+	\item For the videos, two different videos will be used
+	      \begin{itemize}
+	      	\item house720.mp4, with a 720p resolution and 84 frames in total;
+	      	\item door1080.mov with a resolution of 1080p and, 925 frames in total.
+	      \end{itemize}
+	      
+	\item For blur instead, different algorithms will be tested:
+	      \begin{itemize}
+	      	\item  the standard \href{https://docs.opencv.org/3.4/d4/d86/group__imgproc__filter.html#ga8c45db9afe636703801b0b2e440fce37}{OpenCV's blur algorithm} to apply a box blur, $H1$ of size $3\times3$;
+	      	\item a naive convolution algorithm to apply the different kernels $H1$, $H2$, $H3$, $H4$, $H1\_7$ (the last one is a $7\times7$ matrix of ones);
+	      	\item an optimized algorithm for applying just the box blur, namely the one defined by the $H1$ matrix.
+	      \end{itemize}
+\end{itemize}
+
+The kernels tested to blur the image are:
+$$
+H1=\frac{1}{9}\left[\begin{array}{l}111 \\111 \\111\end{array}\right] \quad
+H2=\frac{1}{10}\left[\begin{array}{l}111 \\121 \\111\end{array}\right] \quad
+H3=\frac{1}{16}\left[\begin{array}{l}121 \\242 \\121\end{array}\right] \quad
+H4=\frac{1}{8}\left[\begin{array}{l}111 \\101 \\111\end{array}\right] \quad
+$$

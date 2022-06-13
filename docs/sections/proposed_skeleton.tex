@@ -1,0 +1,92 @@
+\section{Proposed skeleton}
+Once the functions have been identified, the next step is to find the best skeleton from a theoretical point of view before implementing with code. Given the functions $r,g,b,m$, it can be seen that $r$ is I/O bounded and cannot be parallelized. At this point one can reason about the sequential composition $Comp(g,b,m)$, from which by applying the rewriting rules one can obtain different skeletons.
+\begin{equation}\label{eq:normal-form}
+  N.F. = Farm(Comp(g,b,m))
+\end{equation}
+The most effective model is the normal form \cref{eq:normal-form}, in facts it is shown to guarantee the best service time for a parallel streaming skeleton.
+
+\begin{equation}\label{eq:pipe}
+  Pipe(Seq(g),Farm(b),Seq(m))
+\end{equation}
+One alternative that can be considered is to use a pipeline with a farm \cref{eq:pipe}. That in theory should not exceed normal form because communication between stages has a big impact in terms of overhead. Because a given frame $f$ that is executed in stage 1, must be passed into stage 2 and so on. Not only that, but each stage is a different thread, so on top of that, locality of reference would not be fully exploited. In reality, however, the communication overhead can be masked, at least as long as the bottleneck is not the I/O operation. So it would be interesting to see in practice how this model performs.
+
+\begin{equation}\label{eq:farm-map}
+  Farm(Comp(g,Map(b),m))
+\end{equation}
+Another skeleton could be a two-tier skeleton composed by a farm with a nested map \cref{eq:farm-map}. But it would not be worth it in terms of the overhead of splitting and joining the frame, because it would lead to not taking advantage of the locality of reference.
+\newline
+\newline
+Based on the above observations, the normal form \cref{eq:normal-form} and the pipeline of farms \cref{eq:pipe} will be taken as a reference from here on.
+
+\subsection{Performance model}
+\label{sec:performance-model}
+Considering the normal form \cref{eq:normal-form}, the service time is given by:
+\begin{equation}\label{eq:service-time}
+  T_s=\max{\{T_e, \frac{t_g + t_b + t_m}{n}, T_c\}}
+\end{equation}
+where $T_e$ and $T_c$ are the emitter and collector times, respectively. The former computes the function $r$, while the latter in this case is only an accumulation variable. The other times are the time for the Farm functions with $n$ workers, respectively.
+
+\paragraph{Estimate}
+At this point we moved on to just implementing the functions to estimate their execution time and service time for a single frame. The results of the functions $r$, $g$ and $m$ can be seen in \cref{table:functions}, while the results of the function $b$ are exploded into the different implementations and kernels used, shown in \cref{table:blur}.
+Two observations can be made:
+\begin{itemize}
+    \item the largest costs are r and b. But this was expected because $r$ is an I/O operation and $b$ has a higher complexity than $g$ and $m$, which are linear over the number of pixels;
+    \item the execution times on videos of different resolution are proportional to the number of pixels
+\end{itemize}
+
+\begin{table}[!h]
+\centering
+\begin{tabular}{rcccc}
+\hline
+Video resolution & Read frame $r$ & Deque & Grey $g$ & Motion $m$ \\ \hline
+720p             & 2945           & 1     & 2109     & 404        \\
+1080p            & 7247           & 1     & 5676     & 985        \\ \hline
+\end{tabular}
+\caption{Execution time in $\mu s$ for the functions $r$, $g$, $m$ and deque.}
+\label{table:functions}
+\end{table}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{rcccc}
+\hline
+Video resolution & OpenCV & Box blur & H1 - H2 - H3 - H4 & H1\_7   \\ \hline
+720p             & 1780   & 7158     & 24559             & 61234   \\
+1080p            & 3916   & 16640    & 55775             & 138558 \\ \hline
+\end{tabular}
+\caption{Execution time in $\mu s$ for the different blur algorithms $b$ and convolution matrixes.}
+\label{table:blur}
+\end{table}
+
+Considering the service time \cref{eq:service-time} for the normal form, then with the estimated values, for a 1080 video it becomes:
+
+\begin{equation}\label{eq:service-time-estimated}
+T_s=\max{\{7247, \frac{5676 + 55775 + 985}{n}, T_c\}}=\max{\{7247, \frac{62436}{n}, T_c\}}
+\end{equation}
+In other words, this means, that under the hypothesis that for each thread the ideal service time is reached and the $T_c$ is negligible, then with $n \ge 9$, the bottleneck starts to become the function $r$, hence $T_e$ will be the maximum.
+
+Similar reasoning, exploiting the same formula can be done for the pipeline of farms \cref{eq:pipe}. 
+
+% All the data are there to exploit Amdahl's law and understand what the theoretical maximum speedup is. Considering the serial fraction $f$, we know that the asymptotic speedup is equal to the inverse of f. So for a video with a resolution of 1080 and with the H1 blur, we get:
+% \begin{equation}
+%     \lim_{n\rightarrow\infty} sp(n)=\frac{1}{f}=\frac{1}{\frac{9578}{68882}}\approx7,19
+% \end{equation}
+% But since we do not have an infinite number of resources, it is interesting to have a more realistic estimate of what is the speedup that can be obtained based on the number of threads. These results can be appreciated in  \cref{fig:amdahl}. While \cref{table:amdahl} shows the asymptotic limits based on the type of blur used and the resolution of the video.
+
+% \begin{table}[]
+% \begin{tabular}{rcccc}
+% \hline
+% Video resolution & OpenCV & Box blur & H1 - H2 - H3 - H4 & H1\_7  \\ \hline
+% 720p             & 0.60   & 1.31     & 4.15              & 10.01 \\
+% 1080p            & 0.88   & 2.06     & 6.19              & 14.94 \\ \hline
+% \end{tabular}
+% \caption{Theoretical limit on Amdahl's \textit{speedup} for the different blur algorithms $b$ and convolution matrixes.}
+% \label{table:amdahl}
+% \end{table}
+
+% \begin{figure}[!htp]
+%     \centering
+%     \includegraphics[width=\columnwidth]{amdahl_1080.png}
+%     \caption{Amdahl's speedup for the different blur algorithms over a 1080p video.}
+%     \label{fig:amdahl}
+% \end{figure}

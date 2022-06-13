@@ -1,0 +1,29 @@
+\documentclass{article}
+\usepackage[a4paper, total={5.5in, 8in}]{geometry}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+
+\usepackage{graphicx} % images
+\usepackage[hidelinks]{hyperref} % clickable hyperlilnkes for ref
+\usepackage{amsmath} % math ref support
+\usepackage{minted} % code highlight
+\usepackage{dirtree}
+
+\usepackage[nameinlink, capitalize]{cleveref} % smart ref to obtain name of content and not only numbers
+
+\graphicspath{ {images/} }
+
+\title{%
+  Video Motion Detection \\
+  \large Final project for SPM}
+\author{Alex Colucci}
+\date{13th June 2022}
+
+\begin{document}
+    \maketitle
+    \input{sections/introduction}
+    \input{sections/proposed_skeleton}
+    \input{sections/implementation}
+    \input{sections/results}
+\end{document}
