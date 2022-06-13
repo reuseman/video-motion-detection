@@ -1,4 +1,4 @@
-#pragma once'
+#pragma once
 
 #include "ff/ff.hpp"
 #include "fastflow_nodes.hpp"
@@ -21,7 +21,7 @@ namespace video
         std::vector<cv::Mat> frames;
 
     public:
-        MotionDetectorBuffer(cv::VideoCapture cap, const float threshold) : cap(cap), threshold(threshold)
+        MotionDetectorBuffer(cv::VideoCapture &cap, const float threshold) : cap(cap), threshold(threshold)
         {
             do
             {
@@ -37,8 +37,12 @@ namespace video
         ulong count_frames();
         ulong count_frames_player();
         ulong count_frames_threads(int workers);
+        ulong count_frames_threads_pinned(int workers);
         ulong count_frames_parallel_for(int workers);
         ulong count_frames_ff(int workers);
+        ulong count_frames_ff_acc(int workers);
+        ulong count_frames_ff_on_demand(int workers);
+        ulong count_frames_ff_pipe_farm(int workers);
         ulong count_frames_omp(int workers);
     };
 
@@ -154,6 +158,11 @@ namespace video
         return frames_with_motion;
     }
 
+    ulong MotionDetectorBuffer::count_frames_threads_pinned(int workers)
+    {
+        return 0;
+    }
+
     ulong MotionDetectorBuffer::count_frames_ff(int workers)
     {
         this->cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
@@ -174,7 +183,7 @@ namespace video
         ff_collector collector(&frames_with_motion);
         farm.add_emitter(emitter);
         farm.add_collector(collector);
-        farm.set_scheduling_ondemand();
+        // farm.set_scheduling_ondemand();
 
         // ff::ffTime(ff::START_TIME);
         if (farm.run_and_wait_end() < 0)
@@ -187,7 +196,74 @@ namespace video
 #if MOTION_VERBOSE
         farm.ffStats(std::cout);
 #endif
+        return frames_with_motion;
+    }
 
+    ulong MotionDetectorBuffer::count_frames_ff_acc(int workers)
+    {
+        std::atomic<ulong> frames_with_motion = {0};
+        this->cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
+        // Get the preprocessed background
+        cv::Mat background;
+        this->cap >> background;
+        video::frame::preprocess(background);
+
+        // Initialize workers for the ff_Farm
+        std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
+        for (int i = 0; i < workers; i++)
+            workers_nodes.push_back(std::make_unique<ff_worker_acc>(&background, this->threshold, &frames_with_motion));
+
+        // Create the farm
+        ff::ff_Farm<cv::Mat, bool> farm(std::move(workers_nodes));
+        ff_emitter_buffer emitter(&this->frames);
+        farm.add_emitter(emitter);
+
+        if (farm.run_and_wait_end() < 0)
+        {
+            ff::error("Error running farm");
+            return -1;
+        }
+#if MOTION_VERBOSE
+        farm.ffStats(std::cout);
+#endif
+
+        return frames_with_motion;
+    }
+
+    ulong MotionDetectorBuffer::count_frames_ff_on_demand(int workers)
+    {
+        std::atomic<ulong> frames_with_motion = {0};
+        this->cap.set(cv::CAP_PROP_POS_FRAMES, 0); // Go to the beginning of the video
+        // Get the preprocessed background
+        cv::Mat background;
+        this->cap >> background;
+        video::frame::preprocess(background);
+
+        // Initialize workers for the ff_Farm
+        std::vector<std::unique_ptr<ff::ff_node>> workers_nodes;
+        for (int i = 0; i < workers; i++)
+            workers_nodes.push_back(std::make_unique<ff_worker_acc>(&background, this->threshold, &frames_with_motion));
+
+        // Create the farm
+        ff::ff_Farm<cv::Mat, bool> farm(std::move(workers_nodes));
+        ff_emitter_buffer emitter(&this->frames);
+        farm.add_emitter(emitter);
+        farm.set_scheduling_ondemand();
+
+        if (farm.run_and_wait_end() < 0)
+        {
+            ff::error("Error running farm");
+            return -1;
+        }
+#if MOTION_VERBOSE
+        farm.ffStats(std::cout);
+#endif
+        return frames_with_motion;
+    }
+
+    ulong MotionDetectorBuffer::count_frames_ff_pipe_farm(int workers)
+    {
+        std::atomic<ulong> frames_with_motion = {0};
         return frames_with_motion;
     }
 
@@ -207,12 +283,9 @@ namespace video
 #pragma omp parallel num_threads(workers)
 // Emitter
 #pragma omp single
-        while (true)
+        for (int i = 0; i < frames.size(); i++)
         {
-            cv::Mat frame;
-            this->cap >> frame;
-            if (frame.empty())
-                break;
+            cv::Mat frame = frames[i];
 #pragma omp task
             {
                 if (video::frame::contains_motion(background_frame, frame, this->threshold))

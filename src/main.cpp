@@ -13,17 +13,6 @@
 
 #define PROGRAM_VERSION "0.1"
 
-cv::VideoCapture read_capture(const std::string &filename)
-{
-    cv::VideoCapture cap(filename);
-    if (!cap.isOpened())
-    {
-        std::cerr << "Could not open video file: " << filename << std::endl;
-        exit(1);
-    }
-    return cap;
-}
-
 int main(int argc, char const *argv[])
 {
     // Define program arguments
@@ -33,7 +22,7 @@ int main(int argc, char const *argv[])
     parser.add_argument("-s", "--source-video").required().help("path of the source video");
     parser.add_argument("-t", "--threshold").help("threshold for the motion detection").default_value(0.6).scan<'g', double>();
     parser.add_argument("-w", "--workers").default_value(0).help("number of workers (0 for sequential)").scan<'i', int>();
-    parser.add_argument("-m", "--parallel-mode").default_value(0).help("parallel mode (0: threads, 1: fast flow, 2: OpenMP)").scan<'i', int>();
+    parser.add_argument("-m", "--parallel-mode").default_value(0).help("parallel mode (0: threads, 1: ff, 2: ff accumulator, 3: ff on demand, 4: OpenMP)").scan<'i', int>();
     parser.add_argument("-pl", "--player").default_value(false).implicit_value(true).help("shows the video player with workers = 0 (ESC to exit)");
     parser.add_argument("-b", "--benchmark").default_value(std::string("")).help("benchmark mode is enabled and appends the results with the specified name in results.csv");
     parser.add_argument("-i", "--iterations").default_value(5).help("benchmark mode is executed with the specified number of iterations").scan<'i', int>();
@@ -61,10 +50,16 @@ int main(int argc, char const *argv[])
     const auto benchmark_iterations = parser.get<int>("iterations");
     const auto prefetch = parser.get<bool>("prefetch");
 
-    // Detect motion
-    auto cap = read_capture(source_path);
-    unsigned long frames_with_motion = 0;
+    // Read video
+    cv::VideoCapture cap(source_path);
+    if (!cap.isOpened())
+    {
+        std::cerr << "Could not open video file: " << source_path << std::endl;
+        exit(1);
+    }
 
+    // Detect motion
+    unsigned long frames_with_motion = 0;
 #if BLUR == 1
     std::cout << "Blur algorithm: H1" << std::endl;
 #elif BLUR == 2
@@ -112,9 +107,13 @@ int main(int argc, char const *argv[])
             { return motion_detector->count_frames_threads(workers); };
             auto count_frames_ff = [&](int workers) -> unsigned long
             { return motion_detector->count_frames_ff(workers); };
+            auto count_frames_ff_acc = [&](int workers) -> unsigned long
+            { return motion_detector->count_frames_ff_acc(workers); };
+            auto count_frames_ff_acc_on_demand = [&](int workers) -> unsigned long
+            { return motion_detector->count_frames_ff_on_demand(workers); };
             auto count_frames_omp = [&](int workers) -> unsigned long
             { return motion_detector->count_frames_omp(workers); };
-            helper::benchmark(benchmark_name, it, count_frames, std::vector<std::function<unsigned long(int)>>{count_frames_threads, count_frames_ff, count_frames_omp}, std::vector<std::string>{"threads", "ff", "omp"}, total_frames);
+            helper::benchmark(benchmark_name, it, count_frames, std::vector<std::function<unsigned long(int)>>{count_frames_threads, count_frames_ff, count_frames_ff_acc, count_frames_ff_acc_on_demand, count_frames_omp}, std::vector<std::string>{"threads", "ff", "ff_acc", "ff_demand", "omp"}, total_frames);
         }
     }
     else
@@ -135,29 +134,64 @@ int main(int argc, char const *argv[])
         }
         else
         {
-            if (parallel_mode == 0)
+            switch (parallel_mode)
             {
+            case 0:
                 std::cout << "Parallel mode: threads" << std::endl;
                 {
                     helper::utimer timer("Counting frames threads");
                     frames_with_motion = motion_detector->count_frames_threads(workers);
                 }
-            }
-            else if (parallel_mode == 1)
-            {
+                break;
+            case 1:
+                std::cout << "Parallel mode: threads pinned" << std::endl;
+                {
+                    helper::utimer timer("Counting frames threads pinned");
+                    frames_with_motion = motion_detector->count_frames_threads_pinned(workers);
+                }
+                break;
+            case 2:
                 std::cout << "Parallel mode: fast flow" << std::endl;
                 {
                     helper::utimer timer("Counting frames fast flow");
                     frames_with_motion = motion_detector->count_frames_ff(workers);
                 }
-            }
-            else
-            {
+                break;
+            case 3:
+                std::cout << "Parallel mode: fast flow with accumulator" << std::endl;
+                {
+                    helper::utimer timer("Counting frames fast flow");
+                    frames_with_motion = motion_detector->count_frames_ff_acc(workers);
+                }
+                break;
+            case 4:
+                std::cout << "Parallel mode: fast flow with accumulator and on demand" << std::endl;
+                {
+                    helper::utimer timer("Counting frames fast flow");
+                    frames_with_motion = motion_detector->count_frames_ff_on_demand(workers);
+                }
+                break;
+            case 5:
+                std::cout << "Parallel mode: fast flow pipe" << std::endl;
+                {
+                    helper::utimer timer("Counting frames fast flow");
+                    frames_with_motion = motion_detector->count_frames_ff_pipe_farm(workers);
+                }
+                break;
+            case 6:
                 std::cout << "Parallel mode: OpenMP" << std::endl;
                 {
                     helper::utimer timer("Counting frames OpenMP");
                     frames_with_motion = motion_detector->count_frames_omp(workers);
                 }
+                break;
+            default:
+                std::cout << "Parallel mode: threads" << std::endl;
+                {
+                    helper::utimer timer("Counting frames sequential");
+                    frames_with_motion = motion_detector->count_frames_threads(workers);
+                }
+                break;
             }
         }
 
